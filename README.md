@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PDF Generator
 
-## Getting Started
+A simple API to generate PDFs from URLs or HTML content, powered by Puppeteer and headless Chromium. This project is open-source and serverless deployment ready.
 
-First, run the development server:
+## Features
+
+- ✅ Generate PDFs from URLs or HTML content
+- ✅ Powered by Puppeteer and headless Chromium
+- ✅ Serverless deployment ready
+- ✅ Open source
+- 🟠 Customizable page settings (coming soon, open to contributions)
+
+## Get Started
+
+
+You can try it out on https://pdf.mathieutu.dev.
+This URL is provided for demonstration purposes only.
+
+Please deploy it on your own infrastructure, or I'll have to shut it down.
+You can do it freely on Vercel [with one click](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmathieutu%2Fpdf-gen).
+
+
+To generate a PDF, you can make a JSON POST request to the `/api/gen` endpoint with either a `url` or `html` parameter in the request body:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+curl -X POST 'https://your-deployment-url/api/gen' \
+  --header 'Content-Type: application/json' \
+  --output 'foo.pdf' \
+  --data-raw '{
+    "filename": "foo.pdf",
+    "html": "<html><head><script src=\"https:\/\/cdn.tailwindcss.com\"><\/script><\/head><body class=\"h-screen grid place-items-center\"><span class=\"print:hidden\">IT SHOULD NO BE PRINTED<\/span><div class=\"bg-pink-300 text-pink-800 p-8 h-[100px] grid place-items-center font-medium font-mono\">@mathieutu<\/div><\/body><\/html>"
+  }'
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Alternatively, you can directly pass a URL as a query parameter in a GET request:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+https://your-deployment-url/api/gen?url=https://example.com
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The response will be a PDF document with the appropriate content type headers.
 
-## Learn More
+## The Author
 
-To learn more about Next.js, take a look at the following resources:
+This project was created by [@mathieutu](https://mathieutu.dev), a passionate developer focused on building open-source tools and APIs.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Feel free to contribute to the project or [reach out](mailto:contact@mathieutu.dev) for collaboration opportunities.
