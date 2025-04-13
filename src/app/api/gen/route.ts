@@ -74,7 +74,7 @@ export const GET = async (request: NextRequest) => {
     })
 
   } catch (error) {
-    return error
+    return error as Response
   }
 }
 
@@ -101,6 +101,6 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    return error
+    return error as Response
   }
 }
