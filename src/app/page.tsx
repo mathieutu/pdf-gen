@@ -1,5 +1,13 @@
-import { UrlGet, CurlCode } from '@/components/clients'
-import { Link } from '@/components/common'
+'use client'
+
+import { useState } from 'react'
+import { ComponentProps } from 'react'
+
+const Link = (props: ComponentProps<'a'>) => <a
+  className="underline hover:text-blue-800 dark:hover:text-blue-300"
+  target="_blank" rel="noopener noreferrer"
+  {...props}
+/>
 
 const CheckIcon = ({ className = '' }) => (
   <svg
@@ -12,7 +20,41 @@ const CheckIcon = ({ className = '' }) => (
   </svg>
 )
 
+const host = process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:3000'
 
+const CurlCode = () => {
+  const [copied, setCopied] = useState(false)
+
+  const codeString = `curl -X POST '${host}/api/gen' \\
+  --header 'Content-Type: application/json' \\
+  --output 'foo.pdf' \\
+  --data-raw '{
+    "filename": "foo.pdf",
+    "html": "<html><head><script src=\\"https:\\/\\/cdn.tailwindcss.com\\"><\\/script><\\/head><body class=\\"h-screen grid place-items-center\\"><span class=\\"print:hidden\\">IT SHOULD NO BE PRINTED<\\/span><div class=\\"bg-pink-300 text-pink-800 p-8 h-[100px] grid place-items-center font-medium font-mono\\">@mathieutu<\\/div><\\/body><\\/html>"
+  }'`
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(codeString)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden bg-gray-900 shadow-md relative">
+      <button
+        onClick={copyToClipboard}
+        className="print:hidden absolute top-2 right-2 px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-gray-500"
+        aria-label="Copy code to clipboard"
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+      <pre className="px-6 py-6 sm:px-8 overflow-x-auto text-sm text-white">
+        <code>{codeString}</code>
+      </pre>
+
+    </div>
+  )
+}
 
 export default function Home() {
   return (
@@ -131,7 +173,7 @@ export default function Home() {
               <div className="mt-12 lg:mt-0 lg:col-span-2">
                 <div className="text-lg space-y-6 text-gray-600 dark:text-gray-300">
                   <p>
-                    This API is provided for demonstration purposes only. Please deploy it on your own infrastructure,
+                    This hosted API is provided for demonstration purposes only. <strong className="font-bold">Please deploy it on your own infrastructure</strong>,
                     or I&#39;ll have to shut it down.
                   </p>
                   <p>
@@ -148,7 +190,11 @@ export default function Home() {
                   </p>
                   <CurlCode/>
                   <p>
-                    You can also directly pass a url in query parameter of a GET request: <code><UrlGet/></code>
+                    You can also directly pass a url in query parameter of a GET request: <code><Link
+                    href={`${host}/api/gen?url=${host}`}
+                  >
+                    {`${host}/api/gen?url=${host}`}
+                  </Link></code>
                   </p>
                   <p>The response will be a PDF document with the appropriate content type headers.</p>
                 </div>
