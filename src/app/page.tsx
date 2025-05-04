@@ -30,7 +30,10 @@ const CurlCode = () => {
   --output 'foo.pdf' \\
   --data-raw '{
     "filename": "foo.pdf",
-    "html": "<html><head><script src=\\"https:\\/\\/cdn.tailwindcss.com\\"><\\/script><\\/head><body class=\\"h-screen grid place-items-center\\"><span class=\\"print:hidden\\">IT SHOULD NO BE PRINTED<\\/span><div class=\\"bg-pink-300 text-pink-800 p-8 h-[100px] grid place-items-center font-medium font-mono\\">@mathieutu<\\/div><\\/body><\\/html>"
+    "html": "<html><head><script src=\\"https:\\/\\/cdn.tailwindcss.com\\"><\\/script><\\/head><body class=\\"h-screen grid place-items-center\\"><span class=\\"print:hidden\\">IT SHOULD NO BE PRINTED<\\/span><div class=\\"bg-pink-300 text-pink-800 p-8 h-[100px] grid place-items-center font-medium font-mono\\">@mathieutu<\\/div><\\/body><\\/html>",
+    "merge": [
+      "https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf"
+    ]
   }'`
 
   const copyToClipboard = () => {
@@ -55,6 +58,10 @@ const CurlCode = () => {
     </div>
   )
 }
+
+
+const InlineCode = ({children}: {children: React.ReactNode}) => <code
+  className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">{children}</code>;
 
 export default function Home() {
   return (
@@ -136,6 +143,12 @@ export default function Home() {
                     <div className="flex-shrink-0">
                       <CheckIcon className="text-green-500"/>
                     </div>
+                    <p className="ml-3">Merge multiple PDFs into one (including the one you generated from HTML)</p>
+                  </li>
+                  <li className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <CheckIcon className="text-green-500"/>
+                    </div>
                     <p className="ml-3">Powered by Puppeteer and headless Chromium</p>
                   </li>
                   <li className="flex items-start">
@@ -173,27 +186,28 @@ export default function Home() {
               <div className="mt-12 lg:mt-0 lg:col-span-2">
                 <div className="text-lg space-y-6 text-gray-600 dark:text-gray-300">
                   <p>
-                    This hosted API is provided for demonstration purposes only. <strong className="font-bold">Please deploy it on your own infrastructure</strong>,
+                    This hosted API is provided for demonstration purposes only. <strong className="font-bold">Please
+                    deploy it on your own infrastructure</strong>,
                     or I&#39;ll have to shut it down.
                   </p>
                   <p>
                     You can deploy it freely to Vercel <Link
-                      href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmathieutu%2Fpdf-gen"
-                    >with one click</Link>.
+                    href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmathieutu%2Fpdf-gen"
+                  >with one click</Link>.
                   </p>
                   <p>
-                    To generate a PDF, you can make a JSON POST request to the <code
-                    className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">/api/gen</code> endpoint with either
-                    a <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">url</code> or <code
-                    className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">html</code> parameter in the request
-                    body:
+                    To generate a PDF, you can make a JSON POST request to the <InlineCode>/api/gen</InlineCode> endpoint with either
+                    a <InlineCode>url</InlineCode> or <InlineCode>html</InlineCode> parameter in the request
+                    body.
+                    You can also merge multiple PDFs by passing an array of PDF URLs in the <InlineCode>merge</InlineCode> parameter. The
+                    merged PDF will be returned as a single document.
                   </p>
                   <CurlCode/>
                   <p>
                     You can also directly pass a url in query parameter of a GET request: <code><Link
-                    href={`${host}/api/gen?url=${host}`}
+                    href={`${host}/api/gen?url=${host}&merge=https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf`}
                   >
-                    {`${host}/api/gen?url=${host}`}
+                    {`${host}/api/gen?url=${host}&merge=https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf`}
                   </Link></code>
                   </p>
                   <p>The response will be a PDF document with the appropriate content type headers.</p>
@@ -211,11 +225,13 @@ export default function Home() {
               <div className="mt-12 lg:mt-0 lg:col-span-2">
                 <div className="text-lg space-y-6 text-gray-600 dark:text-gray-300">
                   <p>
-                    This project was created by <Link href="https://mathieutu.dev">@mathieutu</Link>, a passionate developer
+                    This project was created by <Link href="https://mathieutu.dev">@mathieutu</Link>, a passionate
+                    developer
                     focused on building open-source tools and APIs.
                   </p>
                   <p>
-                    Feel free to contribute to the project or <Link href={`mailto:contact@mathieutu.dev`}>reach out</Link> for
+                    Feel free to contribute to the project or <Link href={`mailto:contact@mathieutu.dev`}>reach
+                    out</Link> for
                     collaboration opportunities.
                   </p>
                 </div>

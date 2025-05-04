@@ -5,6 +5,7 @@ A simple API to generate PDFs from URLs or HTML content, powered by Puppeteer an
 ## Features
 
 - ✅ Generate PDFs from URLs or HTML content
+- ✅ Merge multiple PDFs into one (including the one you generated from HTML)
 - ✅ Powered by Puppeteer and headless Chromium
 - ✅ Serverless deployment ready
 - ✅ Open source
@@ -20,7 +21,9 @@ Please deploy it on your own infrastructure, or I'll have to shut it down.
 You can do it freely on Vercel [with one click](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmathieutu%2Fpdf-gen).
 
 
-To generate a PDF, you can make a JSON POST request to the `/api/gen` endpoint with either a `url` or `html` parameter in the request body:
+To generate a PDF, you can make a JSON POST request to the `/api/gen` endpoint with either a `url` or `html` parameter in the request body.
+You can also merge multiple PDFs by passing an array of PDF URLs in the `merge` parameter. The merged PDF will be returned as a single document.
+
 
 ```bash
 curl -X POST 'https://your-deployment-url/api/gen' \
@@ -29,13 +32,16 @@ curl -X POST 'https://your-deployment-url/api/gen' \
   --data-raw '{
     "filename": "foo.pdf",
     "html": "<html><head><script src=\"https:\/\/cdn.tailwindcss.com\"><\/script><\/head><body class=\"h-screen grid place-items-center\"><span class=\"print:hidden\">IT SHOULD NO BE PRINTED<\/span><div class=\"bg-pink-300 text-pink-800 p-8 h-[100px] grid place-items-center font-medium font-mono\">@mathieutu<\/div><\/body><\/html>"
+    "merge": [
+      "https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf",
+    ]
   }'
 ```
 
 Alternatively, you can directly pass a URL as a query parameter in a GET request:
 
 ```bash
-https://your-deployment-url/api/gen?url=https://example.com
+https://your-deployment-url/api/gen?url=https://example.com&merge=https://example.com/another.pdf&merge=https://example.com/yet-another.pdf
 ```
 
 The response will be a PDF document with the appropriate content type headers.
