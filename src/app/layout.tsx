@@ -17,14 +17,18 @@ export const metadata: Metadata = {
   description: 'A powerful, easy-to-use API for generating PDF documents from HTML content or URLs.',
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode; }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-    <body
-      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-    >
-      {children}
-    </body>
+      <body
+        className={`
+          ${geistSans.variable}
+          ${geistMono.variable}
+          antialiased
+        `}
+      >
+        {children}
+      </body>
     </html>
   )
 }

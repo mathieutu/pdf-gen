@@ -1,8 +1,8 @@
+import type { NextRequest } from 'next/server'
 import chromium from '@sparticuz/chromium'
-import puppeteer from 'puppeteer-core'
-import PDFMerger from 'pdf-merger-js';
+import PDFMerger from 'pdf-merger-js'
 
-import {NextRequest} from 'next/server'
+import puppeteer from 'puppeteer-core'
 
 export const maxDuration = 60
 
@@ -15,14 +15,14 @@ const getBrowser = async () => {
   } : { executablePath: (await import('puppeteer')).executablePath() })
 }
 
-async function convertHtml({url, html}: {url?: string, html?: string}) {
+async function convertHtml({ url, html }: { url?: string, html?: string }) {
   const browser = await getBrowser()
   const page = await browser.newPage()
 
   if (url) {
-    await page.goto(url, {waitUntil: 'load'})
+    await page.goto(url, { waitUntil: 'load' })
   } else {
-    await page.setContent(html!, {waitUntil: 'load'})
+    await page.setContent(html!, { waitUntil: 'load' })
   }
 
   const pdfBuffer = await page.pdf({
@@ -38,14 +38,14 @@ async function convertHtml({url, html}: {url?: string, html?: string}) {
   })
   await browser.close()
 
-  return pdfBuffer;
+  return pdfBuffer
 }
 
-async function mergePDF(pdfsToMerge: (Uint8Array<ArrayBufferLike>| string)[]) {
+async function mergePDF(pdfsToMerge: (Uint8Array<ArrayBufferLike> | string)[]) {
   const merger = new PDFMerger()
 
   for (const pdf of pdfsToMerge) {
-    await merger.add(pdf);
+    await merger.add(pdf)
   }
 
   return merger.saveAsBuffer()
@@ -53,7 +53,6 @@ async function mergePDF(pdfsToMerge: (Uint8Array<ArrayBufferLike>| string)[]) {
 
 const generatePDF = async ({ url, html, merge }: { url?: string, html?: string, merge: string[] }) => {
   try {
-
     if (!merge.length) {
       return convertHtml({ url, html })
     }
@@ -88,14 +87,13 @@ export const GET = async (request: NextRequest) => {
     )
   }
   try {
-    const pdf =  await generatePDF({ url, merge })
+    const pdf = await generatePDF({ url, merge })
 
     return new Response(pdf as Uint8Array<ArrayBuffer>, {
       headers: {
         'Content-Type': 'application/pdf',
       },
     })
-
   } catch (error) {
     return error as Response
   }

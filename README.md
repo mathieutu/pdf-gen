@@ -13,17 +13,14 @@ A simple API to generate PDFs from URLs or HTML content, powered by Puppeteer an
 
 ## Get Started
 
-
 You can try it out on https://pdf.mathieutu.dev.
 This URL is provided for demonstration purposes only.
 
 Please deploy it on your own infrastructure, or I'll have to shut it down.
 You can do it freely on Vercel [with one click](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmathieutu%2Fpdf-gen).
 
-
 To generate a PDF, you can make a JSON POST request to the `/api/gen` endpoint with either a `url` or `html` parameter in the request body.
 You can also merge multiple PDFs by passing an array of PDF URLs in the `merge` parameter. The merged PDF will be returned as a single document.
-
 
 ```bash
 curl -X POST 'https://your-deployment-url/api/gen' \
