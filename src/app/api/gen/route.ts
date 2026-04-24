@@ -11,9 +11,7 @@ const getBrowser = async () => {
 
   return puppeteer.launch(process.env.NODE_ENV === 'production' && process.env.VERCEL ? {
     args: [...chromium.args, '--font-render-hinting=none', '--hide-scrollbars', '--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox'],
-    defaultViewport: chromium.defaultViewport,
     executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
   } : { executablePath: (await import('puppeteer')).executablePath() })
 }
 
@@ -92,7 +90,7 @@ export const GET = async (request: NextRequest) => {
   try {
     const pdf =  await generatePDF({ url, merge })
 
-    return new Response(pdf, {
+    return new Response(pdf as Uint8Array<ArrayBuffer>, {
       headers: {
         'Content-Type': 'application/pdf',
       },
@@ -119,7 +117,7 @@ export async function POST(request: NextRequest) {
   try {
     const pdf = await generatePDF({ url, html, merge })
 
-    return new Response(pdf, {
+    return new Response(pdf as Uint8Array<ArrayBuffer>, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
