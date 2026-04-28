@@ -44,7 +44,7 @@ const EXAMPLE_HTML = `<html>
     </div>
   </body>
 </html>`
-const EXAMPLE_HTML_URL = host
+const EXAMPLE_HTML_URL = 'https://pdf.mathieutu.dev'
 const EXAMPLE_IMAGE_URL = 'https://www.troglos.fr/og-image.jpg'
 const EXAMPLE_PDF_URL = 'https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf'
 const EXAMPLE_FILENAME = 'foo.pdf'
@@ -106,9 +106,15 @@ const inputCls = `
   dark:focus:border-blue-400 dark:focus:ring-blue-400
 `
 
+type MergeItem = { type: 'url', value: string } | { type: 'file' }
+
 const Playground = () => {
   const [method, setMethod] = useState<'GET' | 'POST'>('POST')
-  const [mergeItems, setMergeItems] = useState([EXAMPLE_HTML_URL, EXAMPLE_IMAGE_URL, EXAMPLE_PDF_URL])
+  const [mergeItems, setMergeItems] = useState<MergeItem[]>([
+    { type: 'url', value: EXAMPLE_HTML_URL },
+    { type: 'url', value: EXAMPLE_IMAGE_URL },
+    { type: 'url', value: EXAMPLE_PDF_URL },
+  ])
 
   const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
 
@@ -140,6 +146,7 @@ const Playground = () => {
           <form
             action="/api/gen"
             method={method}
+            encType={method === 'POST' ? 'multipart/form-data' : undefined}
             target="_blank"
             className="
               space-y-6 rounded-xl border border-gray-200 bg-gray-50 p-6
@@ -193,23 +200,34 @@ const Playground = () => {
               </div>
             )}
 
-            {/* URLs */}
+            {/* Files */}
             <div>
               <p className={labelCls}>
-                URLs
+                Files
                 <span className="ml-1 font-normal text-gray-400">(optional)</span>
               </p>
               <div className="space-y-2">
                 {mergeItems.map((item, i) => (
-                  <div key={item} className="flex gap-2">
-                    <input
-                      type="url"
-                      name="url"
-                      value={item}
-                      onChange={e => setMergeItems(curr => curr.map((val, j) => j === i ? e.target.value : val))}
-                      placeholder="https://example.com/doc.pdf"
-                      className={inputCls}
-                    />
+                  <div key={i} className="flex gap-2">
+                    {item.type === 'url'
+                      ? (
+                        <input
+                          type="url"
+                          name="url"
+                          value={item.value}
+                          onChange={e => setMergeItems(curr => curr.map((val, j) => j === i ? { type: 'url', value: e.target.value } : val))}
+                          placeholder="https://example.com/doc.pdf"
+                          className={inputCls}
+                        />
+                      )
+                      : (
+                        <input
+                          type="file"
+                          name="file"
+                          accept=".pdf,image/*"
+                          className={`${inputCls} file:mr-2 file:rounded file:border-0 file:bg-gray-200 file:px-2 file:py-1 file:text-xs file:text-gray-700 dark:file:bg-gray-700 dark:file:text-gray-300`}
+                        />
+                      )}
                     {mergeItems.length > 1 && (
                       <button
                         type="button"
@@ -228,17 +246,32 @@ const Playground = () => {
                     )}
                   </div>
                 ))}
-                <button
-                  type="button"
-                  onClick={() => setMergeItems([...mergeItems, ''])}
-                  className="
-                    text-sm text-blue-600
-                    hover:underline
-                    dark:text-blue-400
-                  "
-                >
-                  + Add URL
-                </button>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setMergeItems(curr => [...curr, { type: 'url', value: '' }])}
+                    className="
+                      text-sm text-blue-600
+                      hover:underline
+                      dark:text-blue-400
+                    "
+                  >
+                    + Add URL
+                  </button>
+                  {method === 'POST' && (
+                    <button
+                      type="button"
+                      onClick={() => setMergeItems(curr => [...curr, { type: 'file' }])}
+                      className="
+                        text-sm text-blue-600
+                        hover:underline
+                        dark:text-blue-400
+                      "
+                    >
+                      + Add File
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
