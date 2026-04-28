@@ -15,37 +15,69 @@ const getBrowser = async () => {
   } : { executablePath: (await import('puppeteer')).executablePath() })
 }
 
+const isImageUrl = (item: unknown): item is string =>
+  typeof item === 'string' && /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?.*)?$/i.test(item)
+
+const isPdfUrl = (item: unknown): item is string =>
+  typeof item === 'string' && item.toLowerCase().endsWith('.pdf')
+
+const buildImagesHtml = (urls: string[]) =>
+  `<html><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
+
 async function convertHtml({ url, html }: { url?: string, html?: string }) {
   const browser = await getBrowser()
   const page = await browser.newPage()
 
-  if (url) {
+  if (isImageUrl(url)) {
+    await page.setContent(buildImagesHtml([url]), { waitUntil: 'load' })
+  } else if (url) {
     await page.goto(url, { waitUntil: 'load' })
   } else {
     await page.setContent(html!, { waitUntil: 'load' })
   }
 
+  await page.addStyleTag({ content: 'html, body { background: white !important; }' })
+
   const pdfBuffer = await page.pdf({
     preferCSSPageSize: true,
     printBackground: true,
     format: 'a4',
-    margin: {
-      top: 0,
-      bottom: 0,
-      left: 0,
-      right: 0,
-    },
+    margin: { top: 0, bottom: 0, left: 0, right: 0 },
   })
   await browser.close()
 
   return pdfBuffer
 }
 
-async function mergePDF(pdfsToMerge: (Uint8Array<ArrayBufferLike> | string)[]) {
-  const merger = new PDFMerger()
+const groupConsecutiveImages = (items: (string | Uint8Array<ArrayBufferLike>)[]) =>
+  Promise.all(items
+    .reduce<(string | string[] | Uint8Array<ArrayBufferLike>)[]>((groups, item) => {
+      const last = groups.at(-1)
 
-  for (const pdf of pdfsToMerge) {
-    await merger.add(pdf)
+      if (isImageUrl(item) && Array.isArray(last)) {
+        return [...groups.slice(0, -1), [...last, item]]
+      }
+
+      return [...groups, isImageUrl(item) ? [item] : item]
+    }, [])
+    .map(group => {
+      if (Array.isArray(group)) {
+        return convertHtml({ html: buildImagesHtml(group) })
+      }
+
+      if (isPdfUrl(group) || group instanceof Uint8Array) {
+        return group
+      }
+
+      return convertHtml({ url: group })
+    }))
+
+async function mergePDF(itemsToMerge: (Uint8Array<ArrayBufferLike> | string)[]) {
+  const merger = new PDFMerger()
+  const groups = await groupConsecutiveImages(itemsToMerge)
+
+  for (const group of groups) {
+    await merger.add(group)
   }
 
   return merger.saveAsBuffer()
