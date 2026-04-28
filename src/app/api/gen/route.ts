@@ -65,24 +65,8 @@ const groupConsecutiveImages = (items: (string | Uint8Array<ArrayBufferLike>)[])
         return convertHtml({ html: buildImagesHtml(group) })
       }
 
-      if (group instanceof Uint8Array) {
-        return group // return PDF buffers
-      }
-
-      if (isPdfUrl(group)) {
-        // Fetch to return PDF buffers
-        // Ensure success even if S3 signed URLs
-        // (it didn't work althought it worked in the browser...)
-        const fetchDocs = async () => {
-          try {
-            const res = await fetch(group)
-            if (!res.ok) throw new Error(`Failed to fetch PDF: ${group}`)
-            return new Uint8Array(await res.arrayBuffer())
-          } catch (error) {
-            throw new Error(`Failed to fetch PDF: ${group} - ${error}`)
-          }
-        }
-        return fetchDocs()
+      if (isPdfUrl(group) || group instanceof Uint8Array) {
+        return group
       }
 
       return convertHtml({ url: group })
