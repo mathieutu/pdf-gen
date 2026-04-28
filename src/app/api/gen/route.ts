@@ -6,6 +6,7 @@ import puppeteer from 'puppeteer-core'
 
 export const maxDuration = 60
 
+const ensureArray = <T>(item: T | T[]): T[] => Array.isArray(item) ? item : [item]
 const getBrowser = async () => {
   chromium.setGraphicsMode = false
 
@@ -83,34 +84,34 @@ async function mergePDF(itemsToMerge: (Uint8Array<ArrayBufferLike> | string)[]) 
   return await merger.saveAsBuffer() as Uint8Array<ArrayBuffer>
 }
 
-const generatePDF = async ({ url, html, merge }: { url?: string, html?: string, merge: string[] }): Promise<Uint8Array<ArrayBuffer>> => {
-  if (!merge.length) {
-    return convertHtml({ url, html })
+const generatePDF = async ({ urls, html }: GenParams): Promise<Uint8Array<ArrayBuffer>> => {
+  if (!html) {
+    return mergePDF(urls)
   }
 
-  if (!url && !html) {
-    return mergePDF(merge)
+  if (!urls.length) {
+    return convertHtml({ html })
   }
 
-  return mergePDF([await convertHtml({ url, html }), ...merge])
+  return mergePDF([await convertHtml({ html }), ...urls])
 }
 
-type GenParams = { url?: string, html?: string, merge: string[], filename?: string }
+type GenParams = { urls: string[], html?: string, filename?: string }
 
 const parseGetParams = (request: NextRequest): GenParams => {
   const { searchParams } = request.nextUrl
   return {
-    url: searchParams.get('url') || undefined,
-    merge: searchParams.getAll('merge').filter(Boolean),
+    // Deprecated: 'merge' is aliased to 'urls'
+    urls: [...searchParams.getAll('urls'), ...searchParams.getAll('url'), ...searchParams.getAll('merge')].filter(Boolean),
   }
 }
 
 const parseJsonBody = async (request: NextRequest): Promise<GenParams> => {
-  const body = await request.json() as { html?: string, url?: string, merge?: string[], filename?: string }
+  const body = await request.json() as { html?: string, url?: string, urls?: string[], merge?: string[], filename?: string }
   return {
-    url: body.url,
     html: body.html,
-    merge: body.merge ?? [],
+    // Deprecated: single 'url' string and 'merge' are aliased to 'urls'
+    urls: [...(body.urls ?? []), ...ensureArray(body.url ?? []), ...ensureArray(body.merge ?? [])],
     filename: body.filename,
   }
 }
@@ -118,9 +119,9 @@ const parseJsonBody = async (request: NextRequest): Promise<GenParams> => {
 const parseFormBody = async (request: NextRequest): Promise<GenParams> => {
   const formData = await request.formData()
   return {
-    url: (formData.get('url') as string) || undefined,
     html: (formData.get('html') as string) || undefined,
-    merge: (formData.getAll('merge') as string[]).filter(Boolean),
+    // Deprecated: single 'url' string and 'merge' are aliased to 'urls'
+    urls: [...(formData.getAll('urls') as string[]), ...(formData.getAll('url') as string[]), ...(formData.getAll('merge') as string[])].filter(Boolean),
     filename: (formData.get('filename') as string) || undefined,
   }
 }
@@ -138,13 +139,13 @@ const pdfResponse = (pdf: Uint8Array<ArrayBuffer>, filename?: string) =>
     },
   })
 
-const hasContent = ({ url, html, merge }: GenParams) => !!(url || html || merge.length)
+const hasContent = ({ urls, html }: GenParams) => !!(html || urls.length)
 
 export const GET = async (request: NextRequest) => {
   const params = parseGetParams(request)
 
   if (!hasContent(params)) {
-    return Response.json({ error: 'Either \'url\' or \'merge\' must be provided' }, { status: 400 })
+    return Response.json({ error: "'urls' must be provided" }, { status: 400 })
   }
 
   try {
@@ -160,7 +161,7 @@ export const POST = async (request: NextRequest) => {
   const params = await parsePostParams(request)
 
   if (!hasContent(params)) {
-    return Response.json({ error: 'Either \'html\', \'url\' or \'merge\' must be provided' }, { status: 400 })
+    return Response.json({ error: "Either 'html' or 'urls' must be provided" }, { status: 400 })
   }
 
   try {
