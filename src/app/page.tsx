@@ -119,7 +119,7 @@ const Playground = () => {
   const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
 
   return (
-    <section className='print:hidden'>
+    <section className="print:hidden">
       <div className="lg:grid lg:grid-cols-3 lg:gap-8">
         <div>
           <h2 className="
@@ -200,7 +200,7 @@ const Playground = () => {
               </div>
             )}
 
-            {/* Files */}
+            {/* URLs & Files */}
             <div>
               <p className={labelCls}>
                 Files
@@ -211,23 +211,29 @@ const Playground = () => {
                   <div key={i} className="flex gap-2">
                     {item.type === 'url'
                       ? (
-                        <input
-                          type="url"
-                          name="url"
-                          value={item.value}
-                          onChange={e => setMergeItems(curr => curr.map((val, j) => j === i ? { type: 'url', value: e.target.value } : val))}
-                          placeholder="https://example.com/doc.pdf"
-                          className={inputCls}
-                        />
-                      )
+                          <input
+                            type="url"
+                            name="url"
+                            value={item.value}
+                            onChange={e => setMergeItems(curr => curr.map((val, j) => j === i ? { type: 'url', value: e.target.value } : val))}
+                            placeholder="https://example.com/doc.pdf"
+                            className={inputCls}
+                          />
+                        )
                       : (
-                        <input
-                          type="file"
-                          name="file"
-                          accept=".pdf,image/*"
-                          className={`${inputCls} file:mr-2 file:rounded file:border-0 file:bg-gray-200 file:px-2 file:py-1 file:text-xs file:text-gray-700 dark:file:bg-gray-700 dark:file:text-gray-300`}
-                        />
-                      )}
+                          <input
+                            type="file"
+                            name="file"
+                            accept=".pdf,.html,text/html,image/*"
+                            className={`
+                              ${inputCls}
+                              file:mr-2 file:rounded-sm file:border-0
+                              file:bg-gray-200 file:px-2 file:py-1 file:text-xs
+                              file:text-gray-700
+                              dark:file:bg-gray-700 dark:file:text-gray-300
+                            `}
+                          />
+                        )}
                     {mergeItems.length > 1 && (
                       <button
                         type="button"
@@ -528,11 +534,14 @@ export default function Home() {
                     Owning your deployment means you stay in control of updates and stability.
                   </p>
                   <p>
-                    You can{' '}
+                    You can
+                    {' '}
                     <Link href="https://github.com/mathieutu/pdf-gen/fork">
                       fork the repository on GitHub
                     </Link>
-                    {' '}and <Link href="https://vercel.com/new/clone">deploy it to Vercel</Link>
+                    {' '}
+                    and
+                    <Link href="https://vercel.com/new/clone">deploy it to Vercel</Link>
                     .
                   </p>
                   <p>
@@ -562,7 +571,11 @@ export default function Home() {
                       </Link>
                     </code>
                   </p>
-                  <p>The response is always a PDF document with <InlineCode>Content-Type: application/pdf</InlineCode>.</p>
+                  <p>
+                    The response is always a PDF document with
+                    <InlineCode>Content-Type: application/pdf</InlineCode>
+                    .
+                  </p>
                 </div>
               </div>
             </div>

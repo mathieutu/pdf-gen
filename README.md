@@ -24,11 +24,11 @@ You can [fork the repository on GitHub](https://github.com/mathieutu/pdf-gen/for
 
 Accepts JSON or multipart form data. Either `html` or `urls` (or both) must be provided. The HTML content (if provided) is placed first, followed by the URLs in their original order.
 
-| Parameter  | Type             | Description                                                       |
-|------------|------------------|-------------------------------------------------------------------|
-| `html`     | `string`         | Raw HTML content to render as the first page(s)                   |
-| `urls`     | `string[]`       | List of page or PDF URLs to include (also accepts repeated fields in form data). Alias: `url` |
-| `filename` | `string`         | Name of the downloaded file (default: `output.pdf`)              |
+| Parameter  | Type       | Description                                                                                   |
+| ---------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `html`     | `string`   | Raw HTML content to render as the first page(s)                                               |
+| `urls`     | `string[]` | List of page or PDF URLs to include (also accepts repeated fields in form data). Alias: `url` |
+| `filename` | `string`   | Name of the downloaded file (default: `output.pdf`)                                           |
 
 ```bash
 curl -X POST 'https://your-deployment-url/api/gen' \

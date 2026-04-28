@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
+import Buffer from 'node:buffer'
 import chromium from '@sparticuz/chromium'
 import PDFMerger from 'pdf-merger-js'
-
 import puppeteer from 'puppeteer-core'
 
 export const maxDuration = 60
@@ -27,13 +27,13 @@ const isPdfUrl = (item: unknown): item is string =>
 const isPdfDataUrl = (item: unknown): item is string =>
   typeof item === 'string' && /^data:application\/pdf;base64,/i.test(item)
 
-const decodePdfDataUrl = (dataUrl: string): Uint8Array =>
+const decodePDFDataUrl = (dataUrl: string): Uint8Array =>
   new Uint8Array(Buffer.from(dataUrl.replace(/^data:application\/pdf;base64,/i, ''), 'base64'))
 
 const buildImagesHtml = (urls: string[]) =>
   `<html><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
 
-async function convertHtml({ url, html }: { url?: string, html?: string }) {
+async function convertHTML({ url, html }: { url?: string, html?: string }) {
   const browser = await getBrowser()
   const page = await browser.newPage()
 
@@ -58,56 +58,49 @@ async function convertHtml({ url, html }: { url?: string, html?: string }) {
   return pdfBuffer as Uint8Array<ArrayBuffer>
 }
 
-const groupConsecutiveImages = (items: (string | Uint8Array<ArrayBufferLike>)[]) =>
-  Promise.all(items
-    .reduce<(string | string[] | Uint8Array<ArrayBufferLike>)[]>((groups, item) => {
-      const last = groups.at(-1)
+type Item = string | Uint8Array
 
-      if (isImageUrl(item) && Array.isArray(last)) {
-        return [...groups.slice(0, -1), [...last, item]]
-      }
+const isHtmlString = (item: unknown): item is string =>
+  typeof item === 'string' && item.trimStart().startsWith('<')
 
-      return [...groups, isImageUrl(item) ? [item] : item]
-    }, [])
-    .map(group => {
-      if (Array.isArray(group)) {
-        return convertHtml({ html: buildImagesHtml(group) })
-      }
+const groupConsecutiveImages = (items: Item[]) => items
+  .reduce<(string | string[] | Uint8Array)[]>((groups, item) => {
+    const last = groups.at(-1)
 
-      if (isPdfDataUrl(group))
-        return decodePdfDataUrl(group)
+    if (isImageUrl(item) && Array.isArray(last)) {
+      return [...groups.slice(0, -1), [...last, item]]
+    }
 
-      if (isPdfUrl(group) || group instanceof Uint8Array) {
-        return group
-      }
+    return [...groups, isImageUrl(item) ? [item] : item]
+  }, [])
 
-      return convertHtml({ url: group })
-    }))
+const createPDFs = (groups: (string | string[] | Uint8Array)[]): Promise<Uint8Array[]> => Promise.all(
+  groups.map(group => {
+    if (Array.isArray(group)) return convertHTML({ html: buildImagesHtml(group) })
 
-async function mergePDF(itemsToMerge: (Uint8Array<ArrayBufferLike> | string)[]) {
+    if (isHtmlString(group)) return convertHTML({ html: group })
+
+    if (isPdfDataUrl(group)) return decodePDFDataUrl(group) // no used because already decoded?
+
+    if (isPdfUrl(group) || group instanceof Uint8Array) return group
+
+    return convertHTML({ url: group })
+  }),
+)
+
+async function generatePDF(itemsToMerge: Item[]) {
   const merger = new PDFMerger()
-  const groups = await groupConsecutiveImages(itemsToMerge)
+  const groups = groupConsecutiveImages(itemsToMerge)
+  const pdfs = await createPDFs(groups)
 
-  for (const group of groups) {
-    await merger.add(group)
+  for (const pdf of pdfs) {
+    await merger.add(pdf)
   }
 
   return await merger.saveAsBuffer() as Uint8Array<ArrayBuffer>
 }
 
-const generatePDF = async ({ items, html }: GenParams): Promise<Uint8Array<ArrayBuffer>> => {
-  if (!html) {
-    return mergePDF(items)
-  }
-
-  if (!items.length) {
-    return convertHtml({ html })
-  }
-
-  return mergePDF([await convertHtml({ html }), ...items])
-}
-
-type GenParams = { items: (string | Uint8Array)[], html?: string, filename?: string }
+type GenParams = { items: Item[], filename?: string }
 
 class HttpError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -118,36 +111,46 @@ class HttpError extends Error {
 const parseGetParams = (request: NextRequest): GenParams => {
   const { searchParams } = request.nextUrl
   return {
-    items: [...searchParams.getAll('urls'), ...searchParams.getAll('url'), ...searchParams.getAll('merge')].filter(Boolean),
+    items: [
+      ...searchParams.getAll('urls'),
+      ...searchParams.getAll('url'),
+      ...searchParams.getAll('merge'),
+      ...searchParams.getAll('files'),
+      ...searchParams.getAll('file'),
+      ...searchParams.getAll('html'),
+    ].filter(Boolean),
+    filename: searchParams.get('filename') || undefined,
   }
 }
 
-const ITEM_KEYS = new Set(['url', 'urls', 'merge', 'file', 'files'])
+const ITEM_KEYS = new Set(['url', 'urls', 'merge', 'file', 'files', 'html'])
 
 const processStringItem = (value: string): string | Uint8Array => {
-  if (isPdfDataUrl(value as unknown)) return decodePdfDataUrl(value)
+  if (isPdfDataUrl(value as unknown)) return decodePDFDataUrl(value)
+
   if (value.startsWith('data:') && !isImageUrl(value as unknown))
     throw new HttpError(400, `Unsupported data URL type. Only image and PDF data URLs are accepted.`)
+
   return value
 }
 
 const parseJsonBody = async (request: NextRequest): Promise<GenParams> => {
-  const body = await request.json() as { html?: string, url?: string | string[], urls?: string | string[], merge?: string | string[], file?: string | string[], files?: string | string[], filename?: string }
+  const body = await request.json() as { html?: string | string[], url?: string | string[], urls?: string | string[], merge?: string | string[], file?: string | string[], files?: string | string[], filename?: string }
 
   return {
-    html: body.html,
+    filename: body.filename,
     items: [
+      ...ensureArray(body.html ?? []),
       ...ensureArray(body.url ?? []),
       ...ensureArray(body.urls ?? []),
       ...ensureArray(body.merge ?? []),
       ...ensureArray(body.file ?? []),
       ...ensureArray(body.files ?? []),
     ].map(processStringItem),
-    filename: body.filename,
   }
 }
 
-const processFileItem = async (file: File): Promise<string | Uint8Array> => {
+const processFileItem = async (file: File): Promise<Item> => {
   if (file.size > MAX_FILE_SIZE)
     throw new HttpError(413, `File "${file.name}" exceeds the 4 MB limit.`)
 
@@ -159,7 +162,10 @@ const processFileItem = async (file: File): Promise<string | Uint8Array> => {
   if (file.type === 'application/pdf')
     return new Uint8Array(await file.arrayBuffer())
 
-  throw new HttpError(400, `Unsupported file type "${file.type}". Only PDF and image files are accepted.`)
+  if (file.type === 'text/html')
+    return file.text()
+
+  throw new HttpError(400, `Unsupported file type "${file.type}". Only PDF, image, and HTML files are accepted.`)
 }
 
 const parseFormBody = async (request: NextRequest): Promise<GenParams> => {
@@ -167,21 +173,15 @@ const parseFormBody = async (request: NextRequest): Promise<GenParams> => {
 
   const items = await Promise.all(
     [...formData.entries()]
-      .filter(([key]) => ITEM_KEYS.has(key))
-      .map(([, value]) => value instanceof File ? processFileItem(value) : value as string),
+      .filter(([key, value]) => ITEM_KEYS.has(key) && (value instanceof File ? !!value.name : !!value))
+      .map(([, value]) => value instanceof File ? processFileItem(value) : processStringItem(value as string)),
   )
 
   return {
-    html: (formData.get('html') as string) || undefined,
     filename: (formData.get('filename') as string) || undefined,
     items,
   }
 }
-
-const parsePostParams = (request: NextRequest): Promise<GenParams> =>
-  request.headers.get('content-type')?.includes('application/json')
-    ? parseJsonBody(request)
-    : parseFormBody(request)
 
 const pdfResponse = (pdf: Uint8Array<ArrayBuffer>, filename?: string) =>
   new Response(pdf, {
@@ -191,18 +191,16 @@ const pdfResponse = (pdf: Uint8Array<ArrayBuffer>, filename?: string) =>
     },
   })
 
-const hasContent = ({ items, html }: GenParams) => !!(html || items.length)
-
 export const GET = async (request: NextRequest) => {
-  const params = parseGetParams(request)
+  const { filename, items } = parseGetParams(request)
 
-  if (!hasContent(params)) {
-    return Response.json({ error: "'urls' must be provided" }, { status: 400 })
+  if (!items.length) {
+    return Response.json({ error: '\'urls\' must be provided' }, { status: 400 })
   }
 
   try {
-    const pdf = await generatePDF(params)
-    return pdfResponse(pdf)
+    const pdf = await generatePDF(items)
+    return pdfResponse(pdf, filename)
   } catch (error) {
     if (error instanceof HttpError) {
       return Response.json({ error: error.message }, { status: error.status })
@@ -214,14 +212,18 @@ export const GET = async (request: NextRequest) => {
 
 export const POST = async (request: NextRequest) => {
   try {
-    const params = await parsePostParams(request)
+    const { filename, items } = await (
+      request.headers.get('content-type')?.includes('application/json')
+        ? parseJsonBody(request)
+        : parseFormBody(request)
+    )
 
-    if (!hasContent(params)) {
-      return Response.json({ error: "Either 'html', 'urls', or 'files' must be provided" }, { status: 400 })
+    if (!items.length) {
+      return Response.json({ error: 'Either \'html\', \'urls\', or \'files\' must be provided' }, { status: 400 })
     }
 
-    const pdf = await generatePDF(params)
-    return pdfResponse(pdf, params.filename ?? 'output.pdf')
+    const pdf = await generatePDF(items)
+    return pdfResponse(pdf, filename ?? 'output.pdf')
   } catch (error) {
     if (error instanceof HttpError) {
       return Response.json({ error: error.message }, { status: error.status })
