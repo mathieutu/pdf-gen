@@ -33,9 +33,20 @@ const CheckIcon = ({ className = '' }) => (
 
 const host = process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:3000'
 
-const EXAMPLE_URL = host
-const EXAMPLE_HTML = '<html><head><script src="https://cdn.tailwindcss.com"></script></head><body class="h-screen grid place-items-center"><span class="print:hidden">IT SHOULD NOT BE PRINTED</span><div class="bg-pink-300 text-pink-800 p-8 h-[100px] grid place-items-center font-medium font-mono">@mathieutu</div></body></html>'
-const EXAMPLE_MERGE_URL = 'https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf'
+const EXAMPLE_HTML = `<html>
+  <head>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="h-screen grid place-items-center">
+    <span class="print:hidden">IT SHOULD NOT BE PRINTED</span>
+    <div class="bg-pink-300 text-pink-800 p-8 h-25 grid place-items-center font-medium font-mono">
+      @mathieutu
+    </div>
+  </body>
+</html>`
+const EXAMPLE_HTML_URL = host
+const EXAMPLE_IMAGE_URL = 'https://www.troglos.fr/og-image.jpg'
+const EXAMPLE_PDF_URL = 'https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf'
 const EXAMPLE_FILENAME = 'foo.pdf'
 
 const CurlCode = () => {
@@ -46,9 +57,11 @@ const CurlCode = () => {
   --output '${EXAMPLE_FILENAME}' \\
   --data-raw '{
     "filename": "${EXAMPLE_FILENAME}",
-    "html": ${JSON.stringify(EXAMPLE_HTML)},
-    "merge": [
-      "${EXAMPLE_MERGE_URL}"
+    "html": ${JSON.stringify(EXAMPLE_HTML.replace(/\n/g, '').replaceAll('  ', ''))},
+    "urls": [
+      "${EXAMPLE_HTML_URL}",
+      "${EXAMPLE_IMAGE_URL}",
+      "${EXAMPLE_PDF_URL}"
     ]
   }'`
 
@@ -95,12 +108,12 @@ const inputCls = `
 
 const Playground = () => {
   const [method, setMethod] = useState<'GET' | 'POST'>('POST')
-  const [mergeItems, setMergeItems] = useState([EXAMPLE_MERGE_URL])
+  const [mergeItems, setMergeItems] = useState([EXAMPLE_HTML_URL, EXAMPLE_IMAGE_URL, EXAMPLE_PDF_URL])
 
   const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
 
   return (
-    <section>
+    <section className='print:hidden'>
       <div className="lg:grid lg:grid-cols-3 lg:gap-8">
         <div>
           <h2 className="
@@ -160,21 +173,6 @@ const Playground = () => {
               </div>
             </fieldset>
 
-            {/* URL */}
-            <div>
-              <label className={labelCls}>
-                URL
-                <span className="ml-1 font-normal text-gray-400">(optional)</span>
-              </label>
-              <input
-                type="url"
-                name="url"
-                placeholder="https://example.com"
-                className={inputCls}
-                defaultValue={EXAMPLE_URL}
-              />
-            </div>
-
             {/* HTML — POST only */}
             {method === 'POST' && (
               <div>
@@ -195,27 +193,27 @@ const Playground = () => {
               </div>
             )}
 
-            {/* Merge */}
+            {/* URLs */}
             <div>
               <p className={labelCls}>
-                Merge PDFs
+                URLs
                 <span className="ml-1 font-normal text-gray-400">(optional)</span>
               </p>
               <div className="space-y-2">
                 {mergeItems.map((item, i) => (
-                  <div key={i} className="flex gap-2">
+                  <div key={item} className="flex gap-2">
                     <input
                       type="url"
-                      name="merge"
+                      name="url"
                       value={item}
-                      onChange={e => setMergeItems(mergeItems.map((v, j) => j === i ? e.target.value : v))}
+                      onChange={e => setMergeItems(curr => curr.map((val, j) => j === i ? e.target.value : val))}
                       placeholder="https://example.com/doc.pdf"
                       className={inputCls}
                     />
                     {mergeItems.length > 1 && (
                       <button
                         type="button"
-                        onClick={() => setMergeItems(mergeItems.filter((_, j) => j !== i))}
+                        onClick={() => setMergeItems(curr => curr.filter((_, j) => j !== i))}
                         className="
                           shrink-0 rounded-md border border-gray-300 px-3 py-2
                           text-sm text-gray-600
@@ -329,15 +327,16 @@ export default function Home() {
             "
             >
               <a
-                href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmathieutu%2Fpdf-gen"
+                href="https://github.com/mathieutu/pdf-gen/fork"
                 className="
                   flex items-center justify-center rounded-md border
                   border-transparent bg-black px-4 py-3 text-base font-bold
                   text-white shadow-sm
                   hover:opacity-70
                 "
+                target="_blank"
+                rel="noopener noreferrer"
               >
-
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="20"
@@ -347,10 +346,9 @@ export default function Home() {
                   className="mr-2"
                   aria-hidden="true"
                 >
-                  <path d="M12 2L2 19.5h20L12 2z" />
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                 </svg>
-
-                Deploy with Vercel
+                Fork on GitHub
               </a>
               <a
                 href="https://github.com/mathieutu/pdf-gen"
@@ -489,52 +487,49 @@ export default function Home() {
                     This hosted API is provided for demonstration purposes only.
                     {' '}
                     <strong className="font-bold">
-                      Please deploy it on your own infrastructure
+                      Please fork the repository and deploy your own instance.
                     </strong>
-                    , or I&#39;ll have to shut it down.
                   </p>
                   <p>
-                    You can deploy it freely to Vercel
-                    {' '}
-                    <Link
-                      href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmathieutu%2Fpdf-gen"
-                    >
-                      with one click
+                    This API is not versioned and breaking changes may occur, even if best effort is made to avoid them.
+                    Owning your deployment means you stay in control of updates and stability.
+                  </p>
+                  <p>
+                    You can{' '}
+                    <Link href="https://github.com/mathieutu/pdf-gen/fork">
+                      fork the repository on GitHub
                     </Link>
+                    {' '}and <Link href="https://vercel.com/new/clone">deploy it to Vercel</Link>
                     .
                   </p>
                   <p>
-                    To generate a PDF, you can make a JSON POST request to the
+                    To generate a PDF, make a POST request to
                     {' '}
                     <InlineCode>/api/gen</InlineCode>
                     {' '}
-                    endpoint with either a
-                    {' '}
-                    <InlineCode>url</InlineCode>
-                    {' '}
-                    or
+                    with
                     {' '}
                     <InlineCode>html</InlineCode>
                     {' '}
-                    parameter in the request body. You can also merge multiple PDFs by passing an array of PDF URLs in the
+                    and/or
                     {' '}
-                    <InlineCode>merge</InlineCode>
+                    <InlineCode>urls</InlineCode>
                     {' '}
-                    parameter. The merged PDF will be returned as a single document.
+                    in the request body (JSON or form data). The HTML content is placed first, followed by the URLs in order. PDF and images URLs are all supported.
                   </p>
                   <CurlCode />
                   <p>
-                    You can also directly pass a url in query parameter of a GET request:
+                    You can also directly pass URLs as query parameters in a GET request:
                     {' '}
                     <code>
                       <Link
-                        href={`${host}/api/gen?url=${EXAMPLE_URL}&merge=${EXAMPLE_MERGE_URL}`}
+                        href={`${host}/api/gen?url=${EXAMPLE_HTML_URL}&url=${EXAMPLE_IMAGE_URL}&url=${EXAMPLE_PDF_URL}`}
                       >
-                        {`${host}/api/gen?url=${EXAMPLE_URL}&merge=${EXAMPLE_MERGE_URL}`}
+                        {`${host}/api/gen?url=${EXAMPLE_HTML_URL}&url=${EXAMPLE_IMAGE_URL}&url=${EXAMPLE_PDF_URL}`}
                       </Link>
                     </code>
                   </p>
-                  <p>The response will be a PDF document with the appropriate content type headers.</p>
+                  <p>The response is always a PDF document with <InlineCode>Content-Type: application/pdf</InlineCode>.</p>
                 </div>
               </div>
             </div>
