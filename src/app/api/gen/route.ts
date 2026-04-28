@@ -52,24 +52,15 @@ async function mergePDF(pdfsToMerge: (Uint8Array<ArrayBufferLike> | string)[]) {
 }
 
 const generatePDF = async ({ url, html, merge }: { url?: string, html?: string, merge: string[] }) => {
-  try {
-    if (!merge.length) {
-      return convertHtml({ url, html })
-    }
-
-    if (!url && !html) {
-      return mergePDF(merge)
-    }
-
-    return mergePDF([await convertHtml({ url, html }), ...merge])
-  } catch (error) {
-    console.error('Error generating PDF:', error)
-
-    throw Response.json({ error: 'Failed to generate PDF' }, {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+  if (!merge.length) {
+    return convertHtml({ url, html })
   }
+
+  if (!url && !html) {
+    return mergePDF(merge)
+  }
+
+  return mergePDF([await convertHtml({ url, html }), ...merge])
 }
 
 export const GET = async (request: NextRequest) => {
@@ -78,13 +69,7 @@ export const GET = async (request: NextRequest) => {
   const merge = searchParams.getAll('merge') ?? []
 
   if (!url && !merge.length) {
-    return Response.json(
-      { error: 'Either \'url\' or \'merge\' must be provided' },
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
+    return Response.json({ error: 'Either \'url\' or \'merge\' must be provided' }, { status: 400 })
   }
   try {
     const pdf = await generatePDF({ url, merge })
@@ -95,7 +80,8 @@ export const GET = async (request: NextRequest) => {
       },
     })
   } catch (error) {
-    return error as Response
+    console.error('Error generating PDF:', error)
+    return Response.json({ error: 'Failed to generate PDF' }, { status: 500 })
   }
 }
 
@@ -103,13 +89,7 @@ export async function POST(request: NextRequest) {
   const { html, url, merge = [], filename = 'output.pdf' } = await request.json()
 
   if (!html && !url && !merge.length) {
-    return Response.json(
-      { error: 'Either \'html\', \'url\' or \'merge\' must be provided' },
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
+    return Response.json({ error: 'Either \'html\', \'url\' or \'merge\' must be provided' }, { status: 400 })
   }
 
   try {
@@ -122,6 +102,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    return error as Response
+    console.error('Error generating PDF:', error)
+    return Response.json({ error: 'Failed to generate PDF' }, { status: 500 })
   }
 }
