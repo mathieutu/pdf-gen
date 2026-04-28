@@ -46,7 +46,7 @@ async function convertHtml({ url, html }: { url?: string, html?: string }) {
   })
   await browser.close()
 
-  return pdfBuffer
+  return pdfBuffer as Uint8Array<ArrayBuffer>
 }
 
 const groupConsecutiveImages = (items: (string | Uint8Array<ArrayBufferLike>)[]) =>
@@ -80,10 +80,10 @@ async function mergePDF(itemsToMerge: (Uint8Array<ArrayBufferLike> | string)[]) 
     await merger.add(group)
   }
 
-  return merger.saveAsBuffer()
+  return await merger.saveAsBuffer() as Uint8Array<ArrayBuffer>
 }
 
-const generatePDF = async ({ url, html, merge }: { url?: string, html?: string, merge: string[] }) => {
+const generatePDF = async ({ url, html, merge }: { url?: string, html?: string, merge: string[] }): Promise<Uint8Array<ArrayBuffer>> => {
   if (!merge.length) {
     return convertHtml({ url, html })
   }
@@ -95,44 +95,77 @@ const generatePDF = async ({ url, html, merge }: { url?: string, html?: string, 
   return mergePDF([await convertHtml({ url, html }), ...merge])
 }
 
-export const GET = async (request: NextRequest) => {
-  const { searchParams } = request.nextUrl
-  const url = searchParams.get('url') ?? undefined
-  const merge = searchParams.getAll('merge') ?? []
+type GenParams = { url?: string, html?: string, merge: string[], filename?: string }
 
-  if (!url && !merge.length) {
+const parseGetParams = (request: NextRequest): GenParams => {
+  const { searchParams } = request.nextUrl
+  return {
+    url: searchParams.get('url') || undefined,
+    merge: searchParams.getAll('merge').filter(Boolean),
+  }
+}
+
+const parseJsonBody = async (request: NextRequest): Promise<GenParams> => {
+  const body = await request.json() as { html?: string, url?: string, merge?: string[], filename?: string }
+  return {
+    url: body.url,
+    html: body.html,
+    merge: body.merge ?? [],
+    filename: body.filename,
+  }
+}
+
+const parseFormBody = async (request: NextRequest): Promise<GenParams> => {
+  const formData = await request.formData()
+  return {
+    url: (formData.get('url') as string) || undefined,
+    html: (formData.get('html') as string) || undefined,
+    merge: (formData.getAll('merge') as string[]).filter(Boolean),
+    filename: (formData.get('filename') as string) || undefined,
+  }
+}
+
+const parsePostParams = (request: NextRequest): Promise<GenParams> =>
+  request.headers.get('content-type')?.includes('application/json')
+    ? parseJsonBody(request)
+    : parseFormBody(request)
+
+const pdfResponse = (pdf: Uint8Array<ArrayBuffer>, filename?: string) =>
+  new Response(pdf, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      ...(filename && { 'Content-Disposition': `attachment; filename="${filename}"` }),
+    },
+  })
+
+const hasContent = ({ url, html, merge }: GenParams) => !!(url || html || merge.length)
+
+export const GET = async (request: NextRequest) => {
+  const params = parseGetParams(request)
+
+  if (!hasContent(params)) {
     return Response.json({ error: 'Either \'url\' or \'merge\' must be provided' }, { status: 400 })
   }
-  try {
-    const pdf = await generatePDF({ url, merge })
 
-    return new Response(pdf as Uint8Array<ArrayBuffer>, {
-      headers: {
-        'Content-Type': 'application/pdf',
-      },
-    })
+  try {
+    const pdf = await generatePDF(params)
+    return pdfResponse(pdf)
   } catch (error) {
     console.error('Error generating PDF:', error)
     return Response.json({ error: 'Failed to generate PDF' }, { status: 500 })
   }
 }
 
-export async function POST(request: NextRequest) {
-  const { html, url, merge = [], filename = 'output.pdf' } = await request.json()
+export const POST = async (request: NextRequest) => {
+  const params = await parsePostParams(request)
 
-  if (!html && !url && !merge.length) {
+  if (!hasContent(params)) {
     return Response.json({ error: 'Either \'html\', \'url\' or \'merge\' must be provided' }, { status: 400 })
   }
 
   try {
-    const pdf = await generatePDF({ url, html, merge })
-
-    return new Response(pdf as Uint8Array<ArrayBuffer>, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-      },
-    })
+    const pdf = await generatePDF(params)
+    return pdfResponse(pdf, params.filename ?? 'output.pdf')
   } catch (error) {
     console.error('Error generating PDF:', error)
     return Response.json({ error: 'Failed to generate PDF' }, { status: 500 })
