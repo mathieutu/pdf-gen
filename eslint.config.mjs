@@ -47,6 +47,5 @@ export default antfu({
   files: ['**/*.md'],
   rules: {
     'style/max-len': 'off',
-
   },
 })
