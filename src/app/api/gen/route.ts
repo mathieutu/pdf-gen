@@ -20,7 +20,7 @@ const isImageUrl = (item: unknown): item is string =>
   typeof item === 'string' && /\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?.*)?$/i.test(item)
 
 const isPdfUrl = (item: unknown): item is string =>
-  typeof item === 'string' && item.toLowerCase().endsWith('.pdf')
+  typeof item === 'string' && /\.pdf(?:\?.*)?$/i.test(item)
 
 const buildImagesHtml = (urls: string[]) =>
   `<html><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
