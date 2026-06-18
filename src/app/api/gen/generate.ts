@@ -1,0 +1,78 @@
+import type { Item } from './types'
+import chromium from '@sparticuz/chromium'
+import PDFMerger from 'pdf-merger-js'
+import puppeteer from 'puppeteer-core'
+import { isHtmlString, isImageUrl, isPdfUrl } from './types'
+
+const getBrowser = async () => {
+  chromium.setGraphicsMode = false
+
+  return puppeteer.launch(process.env.NODE_ENV === 'production' && process.env.VERCEL ? {
+    args: [...chromium.args, '--font-render-hinting=none', '--hide-scrollbars', '--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox'],
+    executablePath: await chromium.executablePath(),
+  } : { executablePath: (await import('puppeteer')).executablePath() })
+}
+
+const buildImagesHtml = (urls: string[]) =>
+  `<html><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
+
+const convertHTML = async ({ url, html }: { url?: string, html?: string }) => {
+  const browser = await getBrowser()
+  const page = await browser.newPage()
+
+  if (url) {
+    await page.goto(url, { waitUntil: 'load' })
+  } else {
+    await page.setContent(html!, { waitUntil: 'load' })
+  }
+
+  await page.addStyleTag({ content: 'html, body { background: white !important; }' })
+
+  const pdfBuffer = await page.pdf({
+    preferCSSPageSize: true,
+    printBackground: true,
+    format: 'a4',
+    margin: { top: 0, bottom: 0, left: 0, right: 0 },
+  })
+  await browser.close()
+
+  return pdfBuffer as Uint8Array<ArrayBuffer>
+}
+
+const groupConsecutiveImages = (items: Item[]) => items
+  .reduce<(string | string[] | Uint8Array)[]>((groups, item) => {
+    const last = groups.at(-1)
+
+    if (isImageUrl(item) && Array.isArray(last)) {
+      return [...groups.slice(0, -1), [...last, item]]
+    }
+
+    return [...groups, isImageUrl(item) ? [item] : item]
+  }, [])
+
+const createPDFs = (groups: (string | string[] | Uint8Array)[]): Promise<(string | Uint8Array)[]> => Promise.all(
+  groups.map(group => {
+    if (Array.isArray(group)) {
+      return convertHTML({ html: buildImagesHtml(group) })
+    }
+    if (isHtmlString(group)) {
+      return convertHTML({ html: group })
+    }
+    if (isPdfUrl(group) || group instanceof Uint8Array) {
+      return group
+    }
+    return convertHTML({ url: group })
+  }),
+)
+
+export const generatePDF = async (itemsToMerge: Item[]) => {
+  const merger = new PDFMerger()
+  const groups = groupConsecutiveImages(itemsToMerge)
+  const pdfs = await createPDFs(groups)
+
+  for (const pdf of pdfs) {
+    await merger.add(pdf)
+  }
+
+  return await merger.saveAsBuffer() as Uint8Array<ArrayBuffer>
+}
