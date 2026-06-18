@@ -106,14 +106,14 @@ const inputCls = `
   dark:focus:border-blue-400 dark:focus:ring-blue-400
 `
 
-type MergeItem = { type: 'url', value: string } | { type: 'file' }
+type MergeItem = { id: string } & ({ type: 'url', value: string } | { type: 'file' })
 
 const Playground = () => {
   const [method, setMethod] = useState<'GET' | 'POST'>('POST')
-  const [mergeItems, setMergeItems] = useState<MergeItem[]>([
-    { type: 'url', value: EXAMPLE_HTML_URL },
-    { type: 'url', value: EXAMPLE_IMAGE_URL },
-    { type: 'url', value: EXAMPLE_PDF_URL },
+  const [mergeItems, setMergeItems] = useState<MergeItem[]>(() => [
+    { id: crypto.randomUUID(), type: 'url', value: EXAMPLE_HTML_URL },
+    { id: crypto.randomUUID(), type: 'url', value: EXAMPLE_IMAGE_URL },
+    { id: crypto.randomUUID(), type: 'url', value: EXAMPLE_PDF_URL },
   ])
 
   const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
@@ -207,15 +207,15 @@ const Playground = () => {
                 <span className="ml-1 font-normal text-gray-400">(optional)</span>
               </p>
               <div className="space-y-2">
-                {mergeItems.map((item, i) => (
-                  <div key={i} className="flex gap-2">
+                {mergeItems.map(item => (
+                  <div key={item.id} className="flex gap-2">
                     {item.type === 'url'
                       ? (
                           <input
                             type="url"
                             name="url"
                             value={item.value}
-                            onChange={e => setMergeItems(curr => curr.map((val, j) => j === i ? { type: 'url', value: e.target.value } : val))}
+                            onChange={e => setMergeItems(curr => curr.map(val => val.id === item.id ? { id: item.id, type: 'url', value: e.target.value } : val))}
                             placeholder="https://example.com/doc.pdf"
                             className={inputCls}
                           />
@@ -237,7 +237,7 @@ const Playground = () => {
                     {mergeItems.length > 1 && (
                       <button
                         type="button"
-                        onClick={() => setMergeItems(curr => curr.filter((_, j) => j !== i))}
+                        onClick={() => setMergeItems(curr => curr.filter(val => val.id !== item.id))}
                         className="
                           shrink-0 rounded-md border border-gray-300 px-3 py-2
                           text-sm text-gray-600
@@ -255,7 +255,7 @@ const Playground = () => {
                 <div className="flex gap-4">
                   <button
                     type="button"
-                    onClick={() => setMergeItems(curr => [...curr, { type: 'url', value: '' }])}
+                    onClick={() => setMergeItems(curr => [...curr, { id: crypto.randomUUID(), type: 'url', value: '' }])}
                     className="
                       text-sm text-blue-600
                       hover:underline
@@ -267,7 +267,7 @@ const Playground = () => {
                   {method === 'POST' && (
                     <button
                       type="button"
-                      onClick={() => setMergeItems(curr => [...curr, { type: 'file' }])}
+                      onClick={() => setMergeItems(curr => [...curr, { id: crypto.randomUUID(), type: 'file' }])}
                       className="
                         text-sm text-blue-600
                         hover:underline
@@ -557,7 +557,8 @@ export default function Home() {
                     {' '}
                     <InlineCode>urls</InlineCode>
                     {' '}
-                    in the request body (JSON or form data). The HTML content is placed first, followed by the URLs in order. PDF and images URLs are all supported.
+                    in the request body (JSON or form data). The HTML content is placed first,
+                    followed by the URLs in order. PDF and images URLs are all supported.
                   </p>
                   <CurlCode />
                   <p>
