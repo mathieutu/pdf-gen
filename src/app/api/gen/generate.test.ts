@@ -163,6 +163,7 @@ describe('generatePDF', () => {
     vi.clearAllMocks()
     vi.stubEnv('NODE_ENV', 'test')
     vi.stubEnv('VERCEL', undefined)
+    vi.stubEnv('CI', undefined)
     mocks.mockSaveAsBuffer.mockResolvedValue(FAKE_PDF)
     mocks.mockAdd.mockResolvedValue(undefined)
     mocks.mockPdf.mockResolvedValue(FAKE_PDF)
@@ -174,10 +175,24 @@ describe('generatePDF', () => {
     vi.unstubAllEnvs()
   })
 
-  it('local env → uses puppeteer executablePath only', async () => {
+  it('local env → uses puppeteer executablePath only, sandbox kept enabled', async () => {
     const options = await getBrowserLaunchOptions()
 
     expect(options).toEqual({ executablePath: '/fake/chromium' })
+    expect(mocks.mockPuppeteerExecutablePath).toHaveBeenCalledTimes(1)
+    expect(mocks.mockChromiumExecutablePath).not.toHaveBeenCalled()
+    expect(mocks.getChromiumGraphicsMode()).toBe(false)
+  })
+
+  it('CI env → uses puppeteer executablePath and disables sandbox', async () => {
+    vi.stubEnv('CI', 'true')
+
+    const options = await getBrowserLaunchOptions()
+
+    expect(options).toEqual({
+      executablePath: '/fake/chromium',
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', '--hide-scrollbars'],
+    })
     expect(mocks.mockPuppeteerExecutablePath).toHaveBeenCalledTimes(1)
     expect(mocks.mockChromiumExecutablePath).not.toHaveBeenCalled()
     expect(mocks.getChromiumGraphicsMode()).toBe(false)

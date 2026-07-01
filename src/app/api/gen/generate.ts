@@ -28,6 +28,12 @@ export const getBrowserLaunchOptions = async () => {
 
   return {
     executablePath: await (await import('puppeteer')).executablePath(),
+    // CI runners (e.g. GitHub Actions on ubuntu-latest) restrict unprivileged
+    // user namespaces, breaking Chromium's sandbox. Only disable it there,
+    // keep it enabled for local dev where untrusted HTML/URLs may be rendered.
+    ...process.env.CI && {
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', '--hide-scrollbars'],
+    },
   }
 }
 
