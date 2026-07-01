@@ -10,6 +10,7 @@ export default antfu({
     'out/**',
     'build/**',
     'next-env.d.ts',
+    'docs/**',
   ],
 }, {
   ...tailwind.configs.recommended,
@@ -47,5 +48,10 @@ export default antfu({
   files: ['**/*.md'],
   rules: {
     'style/max-len': 'off',
+  },
+}, {
+  files: ['**/*.test.ts', '**/*.test.tsx'],
+  rules: {
+    'test/prefer-lowercase-title': 'off',
   },
 })

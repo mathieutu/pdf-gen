@@ -39,7 +39,7 @@ const convertHTML = async ({ url, html }: { url?: string, html?: string }) => {
   return pdfBuffer as Uint8Array<ArrayBuffer>
 }
 
-const groupConsecutiveImages = (items: Item[]) => items
+export const groupConsecutiveImages = (items: Item[]) => items
   .reduce<(string | string[] | Uint8Array)[]>((groups, item) => {
     const last = groups.at(-1)
 
