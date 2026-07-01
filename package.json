@@ -2,17 +2,19 @@
   "name": "pdf-gen",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "yarn@4.17.0",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:all": "vitest run && vitest run --config vitest.integration.config.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "release": "release-it"
   },
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",
@@ -35,7 +37,9 @@
     "eslint-plugin-better-tailwindcss": "^4.6.0",
     "eslint-plugin-format": "^2.0.1",
     "eslint-plugin-react-refresh": "^0.5.3",
+    "gitmoji-changelog": "^2.3.0",
     "puppeteer": "^25.2.1",
+    "release-it": "^20.2.1",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

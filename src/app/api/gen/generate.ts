@@ -7,31 +7,34 @@ import { isHtmlString, isImageUrl, isPdfUrl } from './types'
 type HtmlConversionInput = { url?: string, html?: string }
 type HtmlToPdfConverter = (input: HtmlConversionInput) => Promise<Uint8Array>
 
-const SERVERLESS_CHROMIUM_ARGS = [
-  '--font-render-hinting=none',
-  '--hide-scrollbars',
-  '--disable-web-security',
-  '--no-sandbox',
-  '--disable-setuid-sandbox',
-]
-
 export const getBrowserLaunchOptions = async () => {
   if ('setGraphicsMode' in chromium) {
     chromium.setGraphicsMode = false
   }
 
-  const isServerlessProduction = process.env.NODE_ENV === 'production' && process.env.VERCEL
+  if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
+    return {
+      args: [...chromium.args, '--font-render-hinting=none', '--hide-scrollbars', '--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox'],
+      executablePath: await chromium.executablePath(),
+    }
+  }
 
-  return isServerlessProduction ? {
-    args: [...chromium.args, ...SERVERLESS_CHROMIUM_ARGS],
-    executablePath: await chromium.executablePath(),
-  } : { executablePath: await (await import('puppeteer')).executablePath() }
+  if (process.env.CHROMIUM_EXECUTABLE_PATH) {
+    return {
+      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', '--hide-scrollbars'],
+    }
+  }
+
+  return {
+    executablePath: await (await import('puppeteer')).executablePath(),
+  }
 }
 
 const getBrowser = async () => puppeteer.launch(await getBrowserLaunchOptions())
 
 const buildImagesHtml = (urls: string[]) =>
-  `<html lang="en"><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" alt="" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
+  `<html><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" alt="" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
 
 const convertHTMLWithBrowser: HtmlToPdfConverter = async ({ url, html }) => {
   const browser = await getBrowser()
