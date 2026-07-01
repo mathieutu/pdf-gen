@@ -4,19 +4,36 @@ import PDFMerger from 'pdf-merger-js'
 import puppeteer from 'puppeteer-core'
 import { isHtmlString, isImageUrl, isPdfUrl } from './types'
 
-const getBrowser = async () => {
-  chromium.setGraphicsMode = false
+type HtmlConversionInput = { url?: string, html?: string }
+type HtmlToPdfConverter = (input: HtmlConversionInput) => Promise<Uint8Array>
 
-  return puppeteer.launch(process.env.NODE_ENV === 'production' && process.env.VERCEL ? {
-    args: [...chromium.args, '--font-render-hinting=none', '--hide-scrollbars', '--disable-web-security', '--no-sandbox', '--disable-setuid-sandbox'],
+const SERVERLESS_CHROMIUM_ARGS = [
+  '--font-render-hinting=none',
+  '--hide-scrollbars',
+  '--disable-web-security',
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+]
+
+export const getBrowserLaunchOptions = async () => {
+  if ('setGraphicsMode' in chromium) {
+    chromium.setGraphicsMode = false
+  }
+
+  const isServerlessProduction = process.env.NODE_ENV === 'production' && process.env.VERCEL
+
+  return isServerlessProduction ? {
+    args: [...chromium.args, ...SERVERLESS_CHROMIUM_ARGS],
     executablePath: await chromium.executablePath(),
-  } : { executablePath: (await import('puppeteer')).executablePath() })
+  } : { executablePath: await (await import('puppeteer')).executablePath() }
 }
 
-const buildImagesHtml = (urls: string[]) =>
-  `<html><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
+const getBrowser = async () => puppeteer.launch(await getBrowserLaunchOptions())
 
-const convertHTML = async ({ url, html }: { url?: string, html?: string }) => {
+const buildImagesHtml = (urls: string[]) =>
+  `<html lang="en"><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" alt="" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
+
+const convertHTMLWithBrowser: HtmlToPdfConverter = async ({ url, html }) => {
   const browser = await getBrowser()
   const page = await browser.newPage()
 
@@ -36,7 +53,7 @@ const convertHTML = async ({ url, html }: { url?: string, html?: string }) => {
   })
   await browser.close()
 
-  return pdfBuffer as Uint8Array<ArrayBuffer>
+  return pdfBuffer as Uint8Array
 }
 
 export const groupConsecutiveImages = (items: Item[]) => items
@@ -50,18 +67,21 @@ export const groupConsecutiveImages = (items: Item[]) => items
     return [...groups, isImageUrl(item) ? [item] : item]
   }, [])
 
-const createPDFs = (groups: (string | string[] | Uint8Array)[]): Promise<(string | Uint8Array)[]> => Promise.all(
+export const createPDFs = (
+  groups: (string | string[] | Uint8Array)[],
+  convertHtml: HtmlToPdfConverter = convertHTMLWithBrowser,
+): Promise<(string | Uint8Array)[]> => Promise.all(
   groups.map(group => {
     if (Array.isArray(group)) {
-      return convertHTML({ html: buildImagesHtml(group) })
+      return convertHtml({ html: buildImagesHtml(group) })
     }
     if (isHtmlString(group)) {
-      return convertHTML({ html: group })
+      return convertHtml({ html: group })
     }
     if (isPdfUrl(group) || group instanceof Uint8Array) {
       return group
     }
-    return convertHTML({ url: group })
+    return convertHtml({ url: group })
   }),
 )
 
