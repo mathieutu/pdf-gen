@@ -35,7 +35,7 @@ jobs:
     needs: [verify-tag-on-main, ci]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -67,3 +67,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Attach Docker image info to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          pull_commands=$(echo "${{ steps.meta.outputs.tags }}" | sed 's/^/docker pull /')
+          current_notes=$(gh release view "${{ github.ref_name }}" --json body --jq .body)
+          {
+            printf '%s\n\n' "$current_notes"
+            printf '### Docker image\n\n```bash\n%s\n```\n' "$pull_commands"
+          } > release_notes.md
+          gh release edit "${{ github.ref_name }}" --notes-file release_notes.md

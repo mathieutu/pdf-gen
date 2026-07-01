@@ -577,6 +577,24 @@ export default function Home() {
                     <InlineCode>Content-Type: application/pdf</InlineCode>
                     .
                   </p>
+                  <p>
+                    A Docker image is published on
+                    {' '}
+                    <Link href="https://github.com/mathieutu/pdf-gen/pkgs/container/pdf-gen">GitHub Container Registry</Link>
+                    {' '}
+                    on every release. Pin the major tag (e.g.
+                    {' '}
+                    <InlineCode>1</InlineCode>
+                    ) to get fixes and new features automatically while staying protected from breaking changes:
+                  </p>
+                  <pre className="
+                    overflow-x-auto rounded-xl bg-gray-900 p-6 text-sm
+                    text-white
+                    sm:px-8
+                  "
+                  >
+                    <code>docker run -p 3000:3000 ghcr.io/mathieutu/pdf-gen:1</code>
+                  </pre>
                 </div>
               </div>
             </div>

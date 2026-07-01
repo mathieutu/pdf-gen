@@ -20,6 +20,25 @@ This URL is provided for demonstration purposes only.
 
 You can [fork the repository on GitHub](https://github.com/mathieutu/pdf-gen/fork) and [deploy it to Vercel](https://vercel.com/new/clone).
 
+### Docker
+
+A Docker image is published on [GitHub Container Registry](https://github.com/mathieutu/pdf-gen/pkgs/container/pdf-gen) on every release.
+
+```bash
+docker run -p 3000:3000 ghcr.io/mathieutu/pdf-gen:1
+```
+
+Available tags:
+
+| Tag      | Description                                                                |
+| -------- | -------------------------------------------------------------------------- |
+| `latest` | Latest release on the `main` branch                                        |
+| `1`      | Latest `1.x.x` release. Safe to track for updates without breaking changes |
+| `1.2`    | Latest `1.2.x` patch release                                               |
+| `1.2.3`  | Exact release version                                                      |
+
+Following [SemVer](https://semver.org), pinning the major tag (e.g. `1`) lets you receive fixes and new features automatically while staying protected from breaking changes.
+
 ### POST `/api/gen`
 
 Accepts JSON or multipart form data. Either `html` or `urls` (or both) must be provided. The HTML content (if provided) is placed first, followed by the URLs in their original order.
