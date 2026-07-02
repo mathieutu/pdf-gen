@@ -21,7 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 nextjs
+  && adduser --system --uid 1001 --home /home/nextjs nextjs \
+  && mkdir -p /home/nextjs \
+  && chown nextjs:nodejs /home/nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
@@ -31,6 +33,7 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOME=/home/nextjs
 
 USER nextjs
 EXPOSE 3000

@@ -49,3 +49,14 @@ jobs:
 
       - name: Run tests
         run: yarn test:all
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build image and generate a PDF
+        run: bash scripts/test-docker.sh
