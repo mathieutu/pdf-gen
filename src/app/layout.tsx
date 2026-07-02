@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import Script from 'next/script'
+import { AuthorSection } from '@/components/AuthorSection'
 import './globals.css'
 
 const geistSans = Geist({
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         `}
       >
         {children}
+        <AuthorSection />
         {analyticsEnabled && <Script async src="https://e.mathieutu.dev/js/pa-kzhH-vdvwiWc_WXNid43B.js" />}
         {analyticsEnabled && (
           <Script

@@ -87,6 +87,11 @@ URLs pointing to image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, 
 
 The response is always a PDF document with `Content-Type: application/pdf`. Errors are returned in JSON format with an appropriate HTTP status code.
 
+## Framework Integrations
+
+- [Laravel](https://pdf.mathieutu.dev/docs/laravel) — example service to generate and merge PDFs from a Laravel app
+- [TypeScript](https://pdf.mathieutu.dev/docs/typescript) — fluent client (Node & browser) built on the Fetch API
+
 ## The Author
 
 This project was created by [@mathieutu](https://mathieutu.dev), a passionate developer focused on building open-source tools and APIs.

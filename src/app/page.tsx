@@ -1,19 +1,7 @@
-'use client'
-
-import { type ComponentProps, useState } from 'react'
-
-const Link = (props: ComponentProps<'a'>) => (
-  <a
-    className="
-      underline
-      hover:text-blue-800
-      dark:hover:text-blue-300
-    "
-    target="_blank"
-    rel="noopener noreferrer"
-    {...props}
-  />
-)
+import NextLink from 'next/link'
+import { Playground } from '@/components/Playground'
+import { CodeBlock, InlineCode, Link } from '@/components/Prose'
+import { CURL_CODE, EXAMPLE_HTML_URL, EXAMPLE_IMAGE_URL, EXAMPLE_PDF_URL, host } from '@/lib/examples'
 
 const CheckIcon = ({ className = '' }) => (
   <svg
@@ -29,299 +17,6 @@ const CheckIcon = ({ className = '' }) => (
   >
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
   </svg>
-)
-
-const host = process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:3000'
-
-const EXAMPLE_HTML = `<html>
-  <head>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body class="h-screen grid place-items-center">
-    <span class="print:hidden">IT SHOULD NOT BE PRINTED</span>
-    <div class="bg-pink-300 text-pink-800 p-8 h-25 grid place-items-center font-medium font-mono">
-      @mathieutu
-    </div>
-  </body>
-</html>`
-const EXAMPLE_HTML_URL = 'https://pdf.mathieutu.dev'
-const EXAMPLE_IMAGE_URL = 'https://www.troglos.fr/og-image.jpg'
-const EXAMPLE_PDF_URL = 'https://pour-un-reveil-ecologique.org/documents/54/10_key_points_IPCC_1_2_and_3.pdf'
-const EXAMPLE_FILENAME = 'foo.pdf'
-
-const CurlCode = () => {
-  const [copied, setCopied] = useState(false)
-
-  const codeString = `curl -X POST '${host}/api/gen' \\
-  --header 'Content-Type: application/json' \\
-  --output '${EXAMPLE_FILENAME}' \\
-  --data-raw '{
-    "filename": "${EXAMPLE_FILENAME}",
-    "html": ${JSON.stringify(EXAMPLE_HTML.replace(/\n/g, '').replaceAll('  ', ''))},
-    "urls": [
-      "${EXAMPLE_HTML_URL}",
-      "${EXAMPLE_IMAGE_URL}",
-      "${EXAMPLE_PDF_URL}"
-    ]
-  }'`
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(codeString)
-    setCopied(true)
-    setTimeout(setCopied, 2000, false)
-  }
-
-  return (
-    <div className="relative overflow-hidden rounded-xl bg-gray-900 shadow-md">
-      <button
-        onClick={copyToClipboard}
-        className="
-          absolute top-2 right-2 rounded-sm bg-gray-700 px-2 py-1 text-xs
-          text-white
-          hover:bg-gray-600
-          focus:ring-1 focus:ring-gray-500 focus:outline-none
-          print:hidden
-        "
-        aria-label="Copy code to clipboard"
-      >
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
-      <pre className="
-        overflow-x-auto p-6 text-sm text-white
-        sm:px-8
-      "
-      >
-        <code>{codeString}</code>
-      </pre>
-
-    </div>
-  )
-}
-
-const inputCls = `
-  w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm
-  text-gray-900 shadow-sm placeholder:text-gray-400
-  focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none
-  dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500
-  dark:focus:border-blue-400 dark:focus:ring-blue-400
-`
-
-type MergeItem = { id: string } & ({ type: 'url', value: string } | { type: 'file' })
-
-const Playground = () => {
-  const [method, setMethod] = useState<'GET' | 'POST'>('POST')
-  const [mergeItems, setMergeItems] = useState<MergeItem[]>(() => [
-    { id: crypto.randomUUID(), type: 'url', value: EXAMPLE_HTML_URL },
-    { id: crypto.randomUUID(), type: 'url', value: EXAMPLE_IMAGE_URL },
-    { id: crypto.randomUUID(), type: 'url', value: EXAMPLE_PDF_URL },
-  ])
-
-  const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
-
-  return (
-    <section className="print:hidden">
-      <div className="lg:grid lg:grid-cols-3 lg:gap-8">
-        <div>
-          <h2 className="
-            text-2xl font-extrabold tracking-tight text-gray-900
-            sm:text-3xl
-            dark:text-white
-          "
-          >
-            Playground
-          </h2>
-          <p className="
-            mt-4 text-base text-gray-500
-            dark:text-gray-400
-          "
-          >
-            Try the API directly from your browser.
-          </p>
-        </div>
-        <div className="
-          mt-12
-          lg:col-span-2 lg:mt-0
-        "
-        >
-          <form
-            action="/api/gen"
-            method={method}
-            encType={method === 'POST' ? 'multipart/form-data' : undefined}
-            target="_blank"
-            className="
-              space-y-6 rounded-xl border border-gray-200 bg-gray-50 p-6
-              dark:border-gray-700 dark:bg-gray-900
-            "
-          >
-            {/* Method */}
-            <fieldset>
-              <legend className={labelCls}>Method</legend>
-              <div className="flex gap-6">
-                {(['GET', 'POST'] as const).map(m => (
-                  <label
-                    key={m}
-                    className="
-                      flex cursor-pointer items-center gap-2 text-sm
-                      text-gray-700
-                      dark:text-gray-300
-                    "
-                  >
-                    <input
-                      type="radio"
-                      name="method"
-                      value={m}
-                      checked={method === m}
-                      onChange={() => setMethod(m)}
-                      className="accent-blue-600"
-                    />
-                    {m}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
-            {/* HTML — POST only */}
-            {method === 'POST' && (
-              <div>
-                <label className={labelCls}>
-                  HTML
-                  <span className="ml-1 font-normal text-gray-400">(optional)</span>
-                </label>
-                <textarea
-                  name="html"
-                  defaultValue={EXAMPLE_HTML}
-                  placeholder="<html><body>Hello world</body></html>"
-                  rows={5}
-                  className={`
-                    ${inputCls}
-                    resize-y font-mono text-xs
-                  `}
-                />
-              </div>
-            )}
-
-            {/* URLs & Files */}
-            <div>
-              <p className={labelCls}>
-                Files
-                <span className="ml-1 font-normal text-gray-400">(optional)</span>
-              </p>
-              <div className="space-y-2">
-                {mergeItems.map(item => (
-                  <div key={item.id} className="flex gap-2">
-                    {item.type === 'url'
-                      ? (
-                          <input
-                            type="url"
-                            name="url"
-                            value={item.value}
-                            onChange={e => setMergeItems(curr => curr.map(val => val.id === item.id ? { id: item.id, type: 'url', value: e.target.value } : val))}
-                            placeholder="https://example.com/doc.pdf"
-                            className={inputCls}
-                          />
-                        )
-                      : (
-                          <input
-                            type="file"
-                            name="file"
-                            accept=".pdf,.html,text/html,image/*"
-                            className={`
-                              ${inputCls}
-                              file:mr-2 file:rounded-sm file:border-0
-                              file:bg-gray-200 file:px-2 file:py-1 file:text-xs
-                              file:text-gray-700
-                              dark:file:bg-gray-700 dark:file:text-gray-300
-                            `}
-                          />
-                        )}
-                    {mergeItems.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setMergeItems(curr => curr.filter(val => val.id !== item.id))}
-                        className="
-                          shrink-0 rounded-md border border-gray-300 px-3 py-2
-                          text-sm text-gray-600
-                          hover:bg-gray-100
-                          dark:border-gray-600 dark:text-gray-400
-                          dark:hover:bg-gray-800
-                        "
-                        aria-label="Remove"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <div className="flex gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setMergeItems(curr => [...curr, { id: crypto.randomUUID(), type: 'url', value: '' }])}
-                    className="
-                      text-sm text-blue-600
-                      hover:underline
-                      dark:text-blue-400
-                    "
-                  >
-                    + Add URL
-                  </button>
-                  {method === 'POST' && (
-                    <button
-                      type="button"
-                      onClick={() => setMergeItems(curr => [...curr, { id: crypto.randomUUID(), type: 'file' }])}
-                      className="
-                        text-sm text-blue-600
-                        hover:underline
-                        dark:text-blue-400
-                      "
-                    >
-                      + Add File
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Filename — POST only */}
-            {method === 'POST' && (
-              <div>
-                <label className={labelCls}>Filename</label>
-                <input
-                  type="text"
-                  name="filename"
-                  defaultValue={EXAMPLE_FILENAME}
-                  placeholder="output.pdf"
-                  className={inputCls}
-                />
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="
-                rounded-md bg-black px-5 py-2.5 text-sm font-bold text-white
-                shadow-sm
-                hover:opacity-70
-                dark:bg-white dark:text-black
-              "
-            >
-              Generate PDF
-            </button>
-          </form>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-const InlineCode = ({ children }: { children: React.ReactNode }) => (
-  <code
-    className="
-      rounded-sm bg-gray-100 px-1 py-0.5
-      dark:bg-gray-800
-    "
-  >
-    {children}
-  </code>
 )
 
 export default function Home() {
@@ -560,7 +255,7 @@ export default function Home() {
                     in the request body (JSON or form data). The HTML content is placed first,
                     followed by the URLs in order. PDF and images URLs are all supported.
                   </p>
-                  <CurlCode />
+                  <CodeBlock lang="bash">{CURL_CODE}</CodeBlock>
                   <p>
                     You can also directly pass URLs as query parameters in a GET request:
                     {' '}
@@ -587,19 +282,11 @@ export default function Home() {
                     <InlineCode>1</InlineCode>
                     ) to get fixes and new features automatically while staying protected from breaking changes:
                   </p>
-                  <pre className="
-                    overflow-x-auto rounded-xl bg-gray-900 p-6 text-sm
-                    text-white
-                    sm:px-8
-                  "
-                  >
-                    <code>docker run -p 3000:3000 ghcr.io/mathieutu/pdf-gen:1</code>
-                  </pre>
+                  <CodeBlock lang="bash">docker run -p 3000:3000 ghcr.io/mathieutu/pdf-gen:1</CodeBlock>
                 </div>
               </div>
             </div>
           </section>
-          <Playground />
           <section>
             <div className="lg:grid lg:grid-cols-3 lg:gap-8">
               <div>
@@ -609,7 +296,7 @@ export default function Home() {
                   dark:text-white
                 "
                 >
-                  The Author
+                  Framework Integrations
                 </h2>
               </div>
               <div className="
@@ -623,24 +310,38 @@ export default function Home() {
                 "
                 >
                   <p>
-                    This project was created by
+                    <NextLink
+                      href="/docs/laravel"
+                      className="
+                        underline
+                        hover:text-blue-800
+                        dark:hover:text-blue-300
+                      "
+                    >
+                      Laravel
+                    </NextLink>
                     {' '}
-                    <Link href="https://mathieutu.dev">@mathieutu</Link>
-                    , a passionate developer focused on building open-source tools and APIs.
+                    — example service to generate and merge PDFs from a Laravel app.
                   </p>
                   <p>
-                    Feel free to contribute to the project or
+                    <NextLink
+                      href="/docs/typescript"
+                      className="
+                        underline
+                        hover:text-blue-800
+                        dark:hover:text-blue-300
+                      "
+                    >
+                      TypeScript
+                    </NextLink>
                     {' '}
-                    <Link href="mailto:contact@mathieutu.dev">
-                      reach out
-                    </Link>
-                    {' '}
-                    for collaboration opportunities.
+                    — fluent client (Node & browser) built on the Fetch API.
                   </p>
                 </div>
               </div>
             </div>
           </section>
+          <Playground />
         </div>
       </div>
     </div>
