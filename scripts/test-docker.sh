@@ -15,7 +15,8 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Building image..."
-docker build -t "$IMAGE_TAG" .
+# shellcheck disable=SC2086 # DOCKER_BUILD_ARGS is meant to expand into multiple flags (e.g. --cache-from/--cache-to in CI)
+docker buildx build --load ${DOCKER_BUILD_ARGS:-} -t "$IMAGE_TAG" .
 
 echo "Starting container..."
 docker run -d --rm --name "$CONTAINER_NAME" -p "$PORT:3000" "$IMAGE_TAG" > /dev/null
