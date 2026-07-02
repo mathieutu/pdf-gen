@@ -1,5 +1,13 @@
 # Changelog
 
+<a name="1.0.1"></a>
+## 1.0.1 (2026-07-02)
+
+### Fixed
+
+- 🐛 Fix Chromium crashpad crash in Docker and add an image build/PDF smoke test [[9410f38](https://github.com/mathieutu/pdf-gen/commit/9410f3817d7cf9e42972ec5a8d9275296253527e)]
+
+
 <a name="1.0.0"></a>
 ## 1.0.0 (2026-07-01)
 
