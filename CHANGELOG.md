@@ -1,5 +1,18 @@
 # Changelog
 
+<a name="1.1.0"></a>
+## 1.1.0 (2026-07-02)
+
+### Added
+
+- ✨ Add online integration docs for Laravel and TypeScript, with syntax-highlighted code blocks [[895deb3](https://github.com/mathieutu/pdf-gen/commit/895deb3671063a0209f41e99f15a177cfd6ffd1d)]
+- 📈 Add Plausible analytics in production [[fa11dfe](https://github.com/mathieutu/pdf-gen/commit/fa11dfeac454b18ea09defdbd729f68f24d83ad2)]
+
+### Changed
+
+- ⚡ Share Docker layer cache between the CI smoke test and the release build [[9fcb701](https://github.com/mathieutu/pdf-gen/commit/9fcb7012f5903f0d8b0590de2d5b36ba29434852)]
+
+
 <a name="1.0.1"></a>
 ## 1.0.1 (2026-07-02)
 
