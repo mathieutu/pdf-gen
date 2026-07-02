@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
+import Script from 'next/script'
 import './globals.css'
 
 const geistSans = Geist({
@@ -18,6 +19,10 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const analyticsEnabled = process.env.NODE_ENV === 'production'
+    && (!process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV === 'production')
+
+  /* eslint-disable react/dom-no-dangerously-set-innerhtml */
   return (
     <html lang="en">
       <body
@@ -28,6 +33,22 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         `}
       >
         {children}
+        {analyticsEnabled && <Script async src="https://e.mathieutu.dev/js/pa-kzhH-vdvwiWc_WXNid43B.js" />}
+        {analyticsEnabled && (
+          <Script
+            id="next-plausible-init"
+            dangerouslySetInnerHTML={{
+              __html: `
+                window.plausible=window.plausible||function()
+                {(plausible.q = plausible.q || []).push(arguments)}
+                ,plausible.init=plausible.init||function(i)
+                {plausible.o = i || {}}
+                ;
+                plausible.init()
+        `,
+            }}
+          />
+        )}
       </body>
     </html>
   )
