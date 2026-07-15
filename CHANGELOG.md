@@ -1,5 +1,13 @@
 # Changelog
 
+<a name="1.2.0"></a>
+## 1.2.0 (2026-07-15)
+
+### Miscellaneous
+
+- 🤖 Add llms.txt for AI agents and fix doc drift on merge order/features [[7664cb4](https://github.com/mathieutu/pdf-gen/commit/7664cb468606dda2f0caf2981e8187e34aa3a22c)]
+
+
 <a name="1.1.0"></a>
 ## 1.1.0 (2026-07-02)
 
