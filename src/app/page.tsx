@@ -151,13 +151,13 @@ export default function Home() {
                     <div className="shrink-0">
                       <CheckIcon className="text-green-500" />
                     </div>
-                    <p className="ml-3">Generate PDFs from URLs or HTML content</p>
+                    <p className="ml-3">Generate PDFs from URLs, raw HTML content, uploaded files, or data URLs</p>
                   </li>
                   <li className="flex items-start">
                     <div className="shrink-0">
                       <CheckIcon className="text-green-500" />
                     </div>
-                    <p className="ml-3">Merge multiple PDFs into one (including the one you generated from HTML)</p>
+                    <p className="ml-3">Merge multiple PDFs/pages/images into a single PDF document</p>
                   </li>
                   <li className="flex items-start">
                     <div className="shrink-0">
@@ -247,13 +247,24 @@ export default function Home() {
                     with
                     {' '}
                     <InlineCode>html</InlineCode>
-                    {' '}
-                    and/or
+                    ,
                     {' '}
                     <InlineCode>urls</InlineCode>
                     {' '}
-                    in the request body (JSON or form data). The HTML content is placed first,
-                    followed by the URLs in order. PDF and images URLs are all supported.
+                    (page, PDF, or image URLs, or data URLs), and/or
+                    {' '}
+                    <InlineCode>files</InlineCode>
+                    {' '}
+                    (direct file uploads, 4 MB max) in the request body (JSON or form data). For JSON bodies, items
+                    are always merged in the fixed order
+                    {' '}
+                    <InlineCode>urls</InlineCode>
+                    {' → '}
+                    <InlineCode>files</InlineCode>
+                    {' → '}
+                    <InlineCode>html</InlineCode>
+                    , regardless of the order you write them in — for multipart form data, items are merged in the
+                    order the fields were submitted.
                   </p>
                   <CodeBlock lang="bash">{CURL_CODE}</CodeBlock>
                   <p>
@@ -268,9 +279,10 @@ export default function Home() {
                     </code>
                   </p>
                   <p>
-                    The response is always a PDF document with
+                    The response is always a single merged PDF document with
+                    {' '}
                     <InlineCode>Content-Type: application/pdf</InlineCode>
-                    .
+                    , whatever the mix or number of inputs.
                   </p>
                   <p>
                     A Docker image is published on

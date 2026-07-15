@@ -17,6 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'PDF Generation API',
   description: 'A powerful, easy-to-use API for generating PDF documents from HTML content or URLs.',
+  alternates: {
+    types: {
+      'text/markdown': '/llms.txt',
+    },
+  },
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

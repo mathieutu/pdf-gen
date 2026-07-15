@@ -1,11 +1,11 @@
 # PDF Generator
 
-A simple API to generate PDFs from URLs or HTML content, powered by Puppeteer and headless Chromium. This project is open-source and serverless deployment ready.
+A simple API to generate PDFs from URLs, HTML content, or uploaded files, powered by Puppeteer and headless Chromium. This project is open-source and serverless deployment ready.
 
 ## Features
 
-- ✅ Generate PDFs from URLs or HTML content
-- ✅ Merge multiple PDFs/pages into one (HTML first, then URLs in order)
+- ✅ Generate PDFs from URLs, raw HTML content, uploaded files, or data URLs
+- ✅ Merge multiple PDFs/pages/images into a single PDF document
 - ✅ Powered by Puppeteer and headless Chromium
 - ✅ Serverless deployment ready
 - ✅ Open source
@@ -41,13 +41,16 @@ Following [SemVer](https://semver.org), pinning the major tag (e.g. `1`) lets yo
 
 ### POST `/api/gen`
 
-Accepts JSON or multipart form data. Either `html` or `urls` (or both) must be provided. The HTML content (if provided) is placed first, followed by the URLs in their original order.
+Accepts JSON or multipart form data. At least one of `html`, `urls`, or `files` must be provided.
 
-| Parameter  | Type       | Description                                                                                   |
-| ---------- | ---------- | --------------------------------------------------------------------------------------------- |
-| `html`     | `string`   | Raw HTML content to render as the first page(s)                                               |
-| `urls`     | `string[]` | List of page or PDF URLs to include (also accepts repeated fields in form data). Alias: `url` |
-| `filename` | `string`   | Name of the downloaded file (default: `output.pdf`)                                           |
+| Parameter  | Type       | Description                                                                                                                                                              |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `html`     | `string`   | Raw HTML content to render                                                                                                                                               |
+| `urls`     | `string[]` | List of page, PDF, or image URLs to include, or data URLs (`data:application/pdf;base64,...`, `data:image/...`). Also accepts repeated fields in form data. Alias: `url` |
+| `files`    | `File[]`   | PDF, image, or HTML files to upload directly, 4 MB max per file (multipart form data only). Alias: `file`                                                                |
+| `filename` | `string`   | Name of the downloaded file (default: `output.pdf`)                                                                                                                      |
+
+`html`, `urls`/`url`, and `files`/`file` are interchangeable ways of listing items to merge — the API infers what each item is from its value, not from which field it was sent under. For JSON bodies and the `GET` endpoint, items are always merged in the fixed order `urls` → `files` → `html`, regardless of the order they're written in the request — HTML therefore always ends up last when mixed with other items. For multipart form data, items are merged in the literal order the fields were submitted.
 
 ```bash
 curl -X POST 'https://your-deployment-url/api/gen' \
@@ -85,12 +88,16 @@ https://your-deployment-url/api/gen?url=https://example.com?url=https://example.
 
 URLs pointing to image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.svg`) are handled, and consecutive image URLs are rendered together one after another.
 
-The response is always a PDF document with `Content-Type: application/pdf`. Errors are returned in JSON format with an appropriate HTTP status code.
+The response is always a single merged PDF document with `Content-Type: application/pdf`, whatever the mix or number of inputs. Errors are returned in JSON format (`{ "error": string }`) with an appropriate HTTP status code (`400` invalid/missing input, `413` uploaded file over 4 MB, `500` generation failure).
 
 ## Framework Integrations
 
 - [Laravel](https://pdf.mathieutu.dev/docs/laravel) — example service to generate and merge PDFs from a Laravel app
 - [TypeScript](https://pdf.mathieutu.dev/docs/typescript) — fluent client (Node & browser) built on the Fetch API
+
+## For AI Agents
+
+If you are an AI agent integrating with this API, read [`/llms.txt`](https://pdf.mathieutu.dev/llms.txt) first — it documents the API and gives explicit integration guidance (notably: never hardcode the demo URL in code you generate for a user). Markdown versions of the framework integration guides are also available at `/docs/laravel.md` and `/docs/typescript.md`.
 
 ## The Author
 

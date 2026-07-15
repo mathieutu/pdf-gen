@@ -1,0 +1,87 @@
+# PDF Generation API
+
+> A simple API to generate PDFs from URLs, HTML content, uploaded files, or images, powered by Puppeteer and headless Chromium. Open-source, serverless deployment ready.
+
+This file is for AI agents/LLMs integrating with this API. For humans, see the [homepage](/).
+
+## Rule #1 for agents: never hardcode the demo URL
+
+`https://pdf.mathieutu.dev` is a public demo instance only, for quick manual tests. It is **not versioned** and can change or break without notice.
+
+When writing code for a user (client, service, integration...), always read the API base URL from a configuration value (environment variable, config file, etc.) that the user must set to **their own deployed instance**. Never bake `https://pdf.mathieutu.dev` into code you generate for a user's project.
+
+To get their own instance, a user forks https://github.com/mathieutu/pdf-gen and deploys it with Docker (`ghcr.io/mathieutu/pdf-gen`) or to Vercel.
+
+## Endpoint
+
+`POST /api/gen` and `GET /api/gen` both generate a PDF. The response is **always exactly one merged PDF document** (`Content-Type: application/pdf`), whatever the mix or number of inputs — never multiple files, never a zip.
+
+### Inputs
+
+Accepts JSON or `multipart/form-data` (POST), or query parameters (GET). Each item to include is one of:
+
+- A page URL (e.g. `https://example.com/report`) — rendered to PDF with a headless browser.
+- A PDF URL (URL ending in `.pdf`) — included as-is.
+- An image URL (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.svg`) — consecutive image items are rendered together on the same page(s).
+- Raw HTML content (a string starting with `<`) — rendered to PDF.
+- A PDF or image **data URL** (`data:application/pdf;base64,...` or `data:image/...`).
+- An uploaded file (`multipart/form-data` only): PDF, image, or HTML file, 4 MB max per file.
+
+Items are provided under one of these field names: `html`, `url`, `urls`, `file`, `files`. **These field names are pure aliases with no fixed type** — the API infers what an item is from its value (an uploaded file vs. a string, and the string's content), not from which field name carried it. For example, a plain URL string sent under `html` is treated as a URL, and an uploaded PDF file sent under `html` is treated as a PDF file. Use whichever field name reads best in your integration; there is no functional difference between them.
+
+An optional `filename` field/param sets the downloaded file's name (default: `output.pdf`).
+
+At least one item (`html`, `url(s)`, or `file(s)`) must be provided, or the request fails with `400`.
+
+### Merge order
+
+- For `GET` and JSON `POST` bodies, items are merged in this **fixed** order regardless of the order they were written in the request: `url` → `urls` → `file` → `files` → `html`. In particular, HTML content always ends up **last** in the merged document when mixed with URLs/files this way, not first.
+- For `multipart/form-data` `POST` requests, items are merged in the literal order the fields were submitted in the request body — so put fields in the order you want them in the output.
+
+### Response
+
+- Success: HTTP 200, `Content-Type: application/pdf`, raw binary body. `Content-Disposition: attachment; filename="..."` is set when a filename is available.
+- Error: JSON body `{ "error": string }`, with status `400` (no/invalid input), `413` (uploaded file over 4 MB), or `500` (PDF generation failed).
+
+### Constraints
+
+- No authentication.
+- ~60 second request timeout.
+- No documented rate limit, but don't assume the demo instance has none — it's a shared public resource.
+
+## Examples
+
+JSON, merging raw HTML with a PDF URL:
+
+```bash
+curl -X POST 'https://your-deployment-url/api/gen' \
+  --header 'Content-Type: application/json' \
+  --output 'foo.pdf' \
+  --data-raw '{
+    "filename": "foo.pdf",
+    "html": "<h1>Cover page</h1>",
+    "urls": ["https://example.com/report.pdf"]
+  }'
+```
+
+Multipart form data, uploading a file directly:
+
+```bash
+curl -X POST 'https://your-deployment-url/api/gen' \
+  --output 'foo.pdf' \
+  --form 'filename=foo.pdf' \
+  --form 'html=<html><body>Hello</body></html>' \
+  --form 'file=@invoice.pdf'
+```
+
+GET with repeated query parameters:
+
+```bash
+curl 'https://your-deployment-url/api/gen?url=https://example.com&url=https://example.com/another.pdf' --output foo.pdf
+```
+
+## Further reading
+
+- [/docs/typescript.md](/docs/typescript.md) — fluent TypeScript client (Node & browser)
+- [/docs/laravel.md](/docs/laravel.md) — Laravel service integration
+- [GitHub repository](https://github.com/mathieutu/pdf-gen) — source, fork, Docker image
