@@ -179,17 +179,9 @@ export default function Home() {
                   </li>
                   <li className="flex items-start">
                     <div className="shrink-0">
-                      <svg
-                        className="size-6 text-orange-500"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
+                      <CheckIcon className="text-green-500" />
                     </div>
-                    <p className="ml-3">Customizable page settings (soon, open to contribution)</p>
+                    <p className="ml-3">Customizable page header/footer, margins, and page numbering</p>
                   </li>
                 </ul>
               </div>
@@ -236,6 +228,7 @@ export default function Home() {
                     </Link>
                     {' '}
                     and
+                    {' '}
                     <Link href="https://vercel.com/new/clone">deploy it to Vercel</Link>
                     .
                   </p>

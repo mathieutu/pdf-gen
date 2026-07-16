@@ -38,6 +38,16 @@ At least one item (`html`, `url(s)`, or `file(s)`) must be provided, or the requ
 - For `GET` and JSON `POST` bodies, items are merged in this **fixed** order regardless of the order they were written in the request: `url` → `urls` → `file` → `files` → `html`. In particular, HTML content always ends up **last** in the merged document when mixed with URLs/files this way, not first.
 - For `multipart/form-data` `POST` requests, items are merged in the literal order the fields were submitted in the request body — so put fields in the order you want them in the output.
 
+### Page customization (`pdfOptions`)
+
+An optional `pdfOptions` object customizes the page: `headerTemplate`/`footerTemplate` (HTML templates, mapped ~1:1 onto Puppeteer's `page.pdf()` header/footer options — providing either one automatically turns on header/footer display, there is no separate `displayHeaderFooter` flag) and `margin` (`{ top, bottom, left, right }`, each a CSS length like `"20mm"`/`"1in"`/`"16px"`, default `0` when omitted).
+
+Use `<span class="pageNumber"></span>`/`<span class="totalPages"></span>` inside a template for page numbering. It stays correct across the whole merged document (not just within one item) even when several items are merged together.
+
+In JSON bodies, `pdfOptions` is a nested object. In form data and `GET` query parameters, use two-level dotted keys: `pdfOptions.headerTemplate`, `pdfOptions.footerTemplate`, `pdfOptions.margin.top`, `.bottom`, `.left`, `.right`.
+
+Known limitation: pages coming from raw PDF inputs (uploaded files, or a `.pdf` URL) are fitted onto the same page size as the rest of the document (scaled to preserve their own aspect ratio, with `margin` reserved as inset) whenever page numbering is active across a multi-item merge — only in that case.
+
 ### Response
 
 - Success: HTTP 200, `Content-Type: application/pdf`, raw binary body. `Content-Disposition: attachment; filename="..."` is set when a filename is available.
@@ -60,7 +70,11 @@ curl -X POST 'https://your-deployment-url/api/gen' \
   --data-raw '{
     "filename": "foo.pdf",
     "html": "<h1>Cover page</h1>",
-    "urls": ["https://example.com/report.pdf"]
+    "urls": ["https://example.com/report.pdf"],
+    "pdfOptions": {
+      "margin": { "top": "20mm", "bottom": "16mm", "left": "14mm", "right": "14mm" },
+      "footerTemplate": "<div style=\"font-size:8px;width:100%;text-align:center;\">Page <span class=\"pageNumber\"></span> / <span class=\"totalPages\"></span></div>"
+    }
   }'
 ```
 

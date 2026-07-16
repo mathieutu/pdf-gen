@@ -66,7 +66,7 @@ ${MERGE_CODE}
 
 ${paramsTable}
 
-For direct file uploads (PDF/image/HTML as \`multipart/form-data\`, 4 MB max), see the [multipart form data section](https://github.com/mathieutu/pdf-gen#post-apigen) of the project's README, or [/llms.txt](/llms.txt) for the full API reference.
+For direct file uploads (PDF/image/HTML as \`multipart/form-data\`, 4 MB max) or page customization (headers, footers, margins, page numbering via \`pdfOptions\`), see the [multipart form data section](https://github.com/mathieutu/pdf-gen#post-apigen) of the project's README, or [/llms.txt](/llms.txt) for the full API reference.
 `
 
 export const GET = () => new Response(body, { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } })

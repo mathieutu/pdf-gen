@@ -142,7 +142,10 @@ export default function LaravelDocs() {
               For direct file uploads (PDF/image/HTML as
               {' '}
               <InlineCode>multipart/form-data</InlineCode>
-              , 4 MB max), see the
+              , 4 MB max) or page customization (headers, footers, margins, page numbering via
+              {' '}
+              <InlineCode>pdfOptions</InlineCode>
+              ), see the
               {' '}
               <Link href="https://github.com/mathieutu/pdf-gen#post-apigen">multipart form data section</Link>
               {' '}
