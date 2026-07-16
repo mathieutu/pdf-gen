@@ -181,7 +181,7 @@ export default function Home() {
                     <div className="shrink-0">
                       <CheckIcon className="text-green-500" />
                     </div>
-                    <p className="ml-3">Customizable page header/footer, margins, and page numbering</p>
+                    <p className="ml-3">Customizable page header/footer, margins, page size/orientation, and page numbering</p>
                   </li>
                 </ul>
               </div>

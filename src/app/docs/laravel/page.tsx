@@ -142,7 +142,7 @@ export default function LaravelDocs() {
               For direct file uploads (PDF/image/HTML as
               {' '}
               <InlineCode>multipart/form-data</InlineCode>
-              , 4 MB max) or page customization (headers, footers, margins, page numbering via
+              , 4 MB max) or page customization (headers, footers, margins, page size/orientation, page numbering via
               {' '}
               <InlineCode>pdfOptions</InlineCode>
               ), see the

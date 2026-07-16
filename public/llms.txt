@@ -40,13 +40,15 @@ At least one item (`html`, `url(s)`, or `file(s)`) must be provided, or the requ
 
 ### Page customization (`pdfOptions`)
 
-An optional `pdfOptions` object customizes the page: `headerTemplate`/`footerTemplate` (HTML templates, mapped ~1:1 onto Puppeteer's `page.pdf()` header/footer options — providing either one automatically turns on header/footer display, there is no separate `displayHeaderFooter` flag) and `margin` (`{ top, bottom, left, right }`, each a CSS length like `"20mm"`/`"1in"`/`"16px"`, default `0` when omitted).
+An optional `pdfOptions` object customizes the page: `headerTemplate`/`footerTemplate` (HTML templates, mapped ~1:1 onto Puppeteer's `page.pdf()` header/footer options — providing either one automatically turns on header/footer display, there is no separate `displayHeaderFooter` flag), `margin` (`{ top, bottom, left, right }`, each a CSS length like `"20mm"`/`"1in"`/`"16px"`, default `0` when omitted), and `pageSize` (`{ format, width, height, landscape }`, default `a4`).
+
+`pageSize.format` is one of `a4` (default), `letter`, `legal`, `tabloid`, `ledger`, `a3`, `a5`, `a6`. Alternatively, `pageSize.width`/`pageSize.height` (each a CSS length, provided together) set a custom page size, overriding `format`. `pageSize.landscape` (boolean, default `false`) swaps width/height regardless of which of the above was used.
 
 Use `<span class="pageNumber"></span>`/`<span class="totalPages"></span>` inside a template for page numbering. It stays correct across the whole merged document (not just within one item) even when several items are merged together.
 
-In JSON bodies, `pdfOptions` is a nested object. In form data and `GET` query parameters, use two-level dotted keys: `pdfOptions.headerTemplate`, `pdfOptions.footerTemplate`, `pdfOptions.margin.top`, `.bottom`, `.left`, `.right`.
+In JSON bodies, `pdfOptions` is a nested object. In form data and `GET` query parameters, use two-level dotted keys: `pdfOptions.headerTemplate`, `pdfOptions.footerTemplate`, `pdfOptions.margin.top`, `.bottom`, `.left`, `.right`, `pdfOptions.pageSize.format`, `pdfOptions.pageSize.width`, `pdfOptions.pageSize.height`, `pdfOptions.pageSize.landscape`.
 
-Known limitation: pages coming from raw PDF inputs (uploaded files, or a `.pdf` URL) are fitted onto the same page size as the rest of the document (scaled to preserve their own aspect ratio, with `margin` reserved as inset) whenever page numbering is active across a multi-item merge — only in that case.
+Known limitation: pages coming from raw PDF inputs (uploaded files, or a `.pdf` URL) are fitted onto the same page size as the rest of the document (scaled to preserve their own aspect ratio, with `margin` reserved as inset) whenever page numbering is active across a multi-item merge — only in that case. For a custom `pageSize.width`/`height`, this fit is only approximate (Chromium applies its own small rounding for arbitrary sizes); it's exact for named `format` presets.
 
 ### Response
 
