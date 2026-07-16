@@ -9,7 +9,7 @@ A simple API to generate PDFs from URLs, HTML content, or uploaded files, powere
 - ✅ Powered by Puppeteer and headless Chromium
 - ✅ Serverless deployment ready
 - ✅ Open source
-- ✅ Customizable page header/footer, margins, and page numbering
+- ✅ Customizable page header/footer, margins, page size/orientation, and page numbering
 
 ## Get Started
 
@@ -58,12 +58,15 @@ Accepts JSON or multipart form data. At least one of `html`, `urls`, or `files` 
 | `pdfOptions.headerTemplate` | `string` | HTML template for the page header. Providing this (or `footerTemplate`) automatically enables header/footer display — there is no separate `displayHeaderFooter` flag |
 | `pdfOptions.footerTemplate` | `string` | HTML template for the page footer. Use `<span class="pageNumber">`/`<span class="totalPages">` for page numbering, exactly as in Puppeteer                            |
 | `pdfOptions.margin`         | `object` | `{ top, bottom, left, right }`, each a CSS length (`px`, `in`, `cm`, `mm`, or unitless — e.g. `"20mm"`). Missing fields default to `0`                                |
+| `pdfOptions.pageSize`       | `object` | `{ format, width, height, landscape }` — see below                                                                                                                    |
 
-In JSON bodies, `pdfOptions` is a regular nested object. In form data and `GET` query strings, use two-level dotted keys: `pdfOptions.headerTemplate`, `pdfOptions.footerTemplate`, `pdfOptions.margin.top`, `pdfOptions.margin.bottom`, `pdfOptions.margin.left`, `pdfOptions.margin.right` — the same convention already used for e.g. `html` in `GET` requests.
+`pdfOptions.pageSize` accepts either a named `format` (`a4` — the default, `letter`, `legal`, `tabloid`, `ledger`, `a3`, `a5`, or `a6`) or a custom `width`/`height` pair (each a CSS length, e.g. `"100mm"`/`"150mm"`) — providing `width`/`height` overrides `format`, and the two must be provided together. `landscape` (boolean, default `false`) swaps the resulting width/height regardless of which of the above was used.
+
+In JSON bodies, `pdfOptions` is a regular nested object. In form data and `GET` query strings, use two-level dotted keys: `pdfOptions.headerTemplate`, `pdfOptions.footerTemplate`, `pdfOptions.margin.top`, `pdfOptions.margin.bottom`, `pdfOptions.margin.left`, `pdfOptions.margin.right`, `pdfOptions.pageSize.format`, `pdfOptions.pageSize.width`, `pdfOptions.pageSize.height`, `pdfOptions.pageSize.landscape` — the same convention already used for e.g. `html` in `GET` requests.
 
 If you set a `headerTemplate`/`footerTemplate` without an explicit `margin`, the default margin (`0`) is usually too small to fit your header/footer content — pass `margin` alongside it.
 
-**Known limitation**: when merging multiple items with a `pageNumber`/`totalPages` reference in the header/footer, the page numbering is stamped globally across the whole merged document, including pages coming from raw PDF inputs (uploaded files or `PdfUrl` items) that never go through Puppeteer. To avoid the header/footer overlapping their existing content, and to keep every page in the merged document the same physical size, these pages are automatically fitted onto an A4 canvas (scaled down or up as needed, aspect ratio preserved) with `pdfOptions.margin` reserved as an inset around them — exactly like Puppeteer's own `margin` behaves for the pages it renders — whenever this global numbering is active, and only in that case.
+**Known limitation**: when merging multiple items with a `pageNumber`/`totalPages` reference in the header/footer, the page numbering is stamped globally across the whole merged document, including pages coming from raw PDF inputs (uploaded files or `PdfUrl` items) that never go through Puppeteer. To avoid the header/footer overlapping their existing content, and to keep every page in the merged document the same physical size, these pages are automatically fitted onto the target page size (`pdfOptions.pageSize`, `a4` by default — scaled down or up as needed, aspect ratio preserved) with `pdfOptions.margin` reserved as an inset around them — exactly like Puppeteer's own `margin` behaves for the pages it renders — whenever this global numbering is active, and only in that case. For a custom `width`/`height` (as opposed to a named `format`), this fit is only approximate — Chromium's print pipeline applies its own sub-point rounding for arbitrary page sizes that this API cannot pre-measure the way it does for the named presets.
 
 `html`, `urls`/`url`, and `files`/`file` are interchangeable ways of listing items to merge — the API infers what each item is from its value, not from which field it was sent under. For JSON bodies and the `GET` endpoint, items are always merged in the fixed order `urls` → `files` → `html`, regardless of the order they're written in the request — HTML therefore always ends up last when mixed with other items. For multipart form data, items are merged in the literal order the fields were submitted.
 
@@ -92,7 +95,9 @@ curl -X POST 'https://your-deployment-url/api/gen' \
   --form 'url=https://example.com/another.pdf' \
   --form 'pdfOptions.margin.top=20mm' \
   --form 'pdfOptions.headerTemplate=<div>My Company</div>' \
-  --form 'pdfOptions.footerTemplate=<div>Page <span class="pageNumber"></span> / <span class="totalPages"></span></div>'
+  --form 'pdfOptions.footerTemplate=<div>Page <span class="pageNumber"></span> / <span class="totalPages"></span></div>' \
+  --form 'pdfOptions.pageSize.format=letter' \
+  --form 'pdfOptions.pageSize.landscape=true'
 ```
 
 ### GET `/api/gen`

@@ -1,11 +1,11 @@
 import type { PDFPage } from 'pdf-lib'
-import type { Item, PdfOptions } from './types'
+import type { Item, PageFormat, PdfOptions } from './types'
 import chromium from '@sparticuz/chromium'
 import { PDFDocument } from 'pdf-lib'
 import puppeteer from 'puppeteer-core'
 import { HttpError, isHtmlString, isImageUrl, isPdfUrl } from './types'
 
-type HtmlConversionInput = { url?: string, html?: string, headerTemplate?: string, footerTemplate?: string, margin?: PdfOptions['margin'], transparent?: boolean }
+type HtmlConversionInput = { url?: string, html?: string, headerTemplate?: string, footerTemplate?: string, margin?: PdfOptions['margin'], pageSize?: PdfOptions['pageSize'], transparent?: boolean }
 type HtmlToPdfConverter = (input: HtmlConversionInput) => Promise<Uint8Array>
 
 // Puppeteer falls back to its own default template (showing the date, title,
@@ -48,7 +48,85 @@ const getBrowser = async () => puppeteer.launch(await getBrowserLaunchOptions())
 const buildImagesHtml = (urls: string[]) =>
   `<html><body style="margin:0;padding:16px;box-sizing:border-box;background:white;display:flex;flex-direction:column;align-items:center;gap:16px">${urls.map(u => `<img src="${u}" alt="" style="max-width:100%;object-fit:contain">`).join('')}</body></html>`
 
-const convertHTMLWithBrowser: HtmlToPdfConverter = async ({ url, html, headerTemplate, footerTemplate, margin, transparent }) => {
+// Derived from puppeteer-core's own unitToPixels table (px:1, in:96, cm:37.8,
+// mm:3.78), converted to points (× 72/96), so the margin added to
+// passthrough pages matches exactly (same rounding) the one Puppeteer
+// reserves on the pages it generates.
+const PT_PER_CSS_UNIT: Record<string, number> = { px: 0.75, in: 72, cm: 28.35, mm: 2.835 }
+
+export const cssLengthToPoints = (value?: string): number => {
+  if (!value) return 0
+  const [, amount, unit = 'px'] = value.match(/^(\d+(?:\.\d+)?)(px|in|cm|mm)?$/i) ?? []
+  return Number(amount) * PT_PER_CSS_UNIT[unit.toLowerCase()]
+}
+
+// Empirically measured MediaBox that this project's pinned Puppeteer/Chromium build
+// actually produces for `page.pdf({ format: 'a4' })` — verified by rendering a page
+// and reading its MediaBox back with pdf-lib, NOT the commonly-quoted ISO 216
+// approximation (595.28 x 841.89pt), which is off by ~0.64pt/0.03pt from what
+// Chromium's print pipeline really outputs. Kept as the byte-exact default so
+// existing callers (no pageSize / format 'a4') see zero change in output.
+export const A4_SIZE = { width: 595.91998, height: 841.91998 }
+
+// Same empirical-measurement approach as A4_SIZE above, applied to every other named
+// preset Puppeteer supports: rendering `page.pdf({ format: <name> })` and reading the
+// resulting MediaBox back with pdf-lib does NOT reproduce the nominal ISO 216/ANSI mm
+// dimensions converted through cssLengthToPoints (Chromium's print pipeline applies
+// its own sub-point rounding, same as it does for A4) — off by up to ~0.9pt, enough
+// to visibly misalign a passthrough page against its Puppeteer-rendered siblings when
+// both must land on the exact same canvas (see fitPassthroughPageToSize). Re-measure
+// and update this table if the pinned Puppeteer/Chromium version changes.
+const PAGE_FORMAT_SIZES_POINTS: Record<Exclude<PageFormat, 'a4'>, { width: number, height: number }> = {
+  letter: { width: 612, height: 792 },
+  legal: { width: 612, height: 1008 },
+  tabloid: { width: 792, height: 1224 },
+  ledger: { width: 1224, height: 792 },
+  a3: { width: 841.91998, height: 1191.12 },
+  a5: { width: 420, height: 595.91998 },
+  a6: { width: 298.07999, height: 420 },
+}
+
+type ResolvedPageSize =
+  | { format: PageFormat, points: { width: number, height: number } }
+  | { width: string, height: string, points: { width: number, height: number } }
+
+// Resolves a pageSize option into what `page.pdf()` should receive, in
+// portrait orientation — landscape is applied separately (see
+// `getTargetPagePoints` and the `landscape` option passed to `page.pdf()`
+// in `convertHTMLWithBrowser`), since Puppeteer swaps width/height for both
+// the `format` shortcut and explicit `width`/`height` the same way (verified
+// empirically alongside the measurements above).
+const resolvePageSize = (pageSize?: PdfOptions['pageSize']): ResolvedPageSize => {
+  const { format = 'a4', width, height } = pageSize ?? {}
+
+  // Custom dimensions can't be pre-measured (any value is possible), so this is
+  // the one case where the passthrough-fit target is only approximately (not
+  // byte-exactly) what Chromium renders — see the comment on
+  // PAGE_FORMAT_SIZES_POINTS above for the scale of that imprecision.
+  if (width && height) {
+    return { width, height, points: { width: cssLengthToPoints(width), height: cssLengthToPoints(height) } }
+  }
+
+  return { format, points: format === 'a4' ? A4_SIZE : PAGE_FORMAT_SIZES_POINTS[format] }
+}
+
+// The final target size (in points, portrait/landscape already applied) that both
+// the Puppeteer-rendered pages and the fitted passthrough pages (see
+// `fitPassthroughPageToSize`) must share for a given pdfOptions.pageSize.
+export const getTargetPagePoints = (pageSize?: PdfOptions['pageSize']): { width: number, height: number } => {
+  const { points } = resolvePageSize(pageSize)
+  return pageSize?.landscape ? { width: points.height, height: points.width } : points
+}
+
+const convertHTMLWithBrowser: HtmlToPdfConverter = async ({
+  url,
+  html,
+  headerTemplate,
+  footerTemplate,
+  margin,
+  pageSize,
+  transparent,
+}) => {
   const browser = await getBrowser()
   const page = await browser.newPage()
 
@@ -65,10 +143,43 @@ const convertHTMLWithBrowser: HtmlToPdfConverter = async ({ url, html, headerTem
     await page.addStyleTag({ content: 'html, body { background: white !important; }' })
   }
 
+  // preferCSSPageSize: false is not enough on its own — verified empirically that
+  // Chromium's print pipeline still honors a target `@page` rule's size/orientation
+  // *and* margin over our own explicit page.pdf() options, even with the flag off.
+  // Overriding the values via an injected (even !important) stylesheet doesn't fully
+  // cede control either — Chromium keeps blending it with our own margin. Actually
+  // deleting the `@page` rule(s) from the CSSOM is the only approach that reliably
+  // hands full control back to our own pdfOptions.pageSize/margin.
+  if (pageSize) {
+    await page.evaluate(() => {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (let i = sheet.cssRules.length - 1; i >= 0; i -= 1) {
+            if (sheet.cssRules[i].type === CSSRule.PAGE_RULE) sheet.deleteRule(i)
+          }
+        } catch {
+          // Cross-origin stylesheets throw on .cssRules access (CORS) — an @page
+          // rule hiding in one of those can't be stripped this way, a known gap.
+        }
+      }
+    })
+  }
+
+  const resolvedPageSize = resolvePageSize(pageSize)
+
   const pdfBuffer = await page.pdf({
-    preferCSSPageSize: true,
+    // Mirrors a browser's print dialog: the target page's own `@page` CSS (if any)
+    // only supplies the *default* size/margin — an explicit pdfOptions.pageSize from
+    // the caller must always win over it, the same way picking a paper size in the
+    // print dialog overrides the page's own @page rule. Puppeteer's flag is binary
+    // (no "CSS as default, still overridable" mode), so this is only ever true when
+    // the caller left pageSize unset entirely, deferring fully to the page's CSS.
+    preferCSSPageSize: !pageSize,
     printBackground: !transparent,
-    format: 'a4',
+    landscape: pageSize?.landscape,
+    ...'format' in resolvedPageSize
+      ? { format: resolvedPageSize.format }
+      : { width: resolvedPageSize.width, height: resolvedPageSize.height },
     margin: { top: 0, bottom: 0, left: 0, right: 0, ...margin },
     ...(headerTemplate || footerTemplate) && {
       displayHeaderFooter: true,
@@ -113,46 +224,24 @@ export const fetchPdfBytes = async (url: string): Promise<Uint8Array> => {
   return new Uint8Array(await response.arrayBuffer())
 }
 
-// Derived from puppeteer-core's own unitToPixels table (px:1, in:96, cm:37.8,
-// mm:3.78), converted to points (× 72/96), so the margin added to
-// passthrough pages matches exactly (same rounding) the one Puppeteer
-// reserves on the pages it generates.
-const PT_PER_CSS_UNIT: Record<string, number> = { px: 0.75, in: 72, cm: 28.35, mm: 2.835 }
-
-export const cssLengthToPoints = (value?: string): number => {
-  if (!value) return 0
-  const [, amount, unit = 'px'] = value.match(/^(\d+(?:\.\d+)?)(px|in|cm|mm)?$/i) ?? []
-  return Number(amount) * PT_PER_CSS_UNIT[unit.toLowerCase()]
-}
-
-// Empirically measured MediaBox that this project's pinned Puppeteer/Chromium build
-// actually produces for `page.pdf({ format: 'a4' })` (see convertHTMLWithBrowser) —
-// verified by rendering a page and reading its MediaBox back with pdf-lib, NOT the
-// commonly-quoted ISO 216 approximation (595.28 x 841.89pt), which is off by
-// ~0.64pt/0.03pt from what Chromium's print pipeline really outputs. Passthrough
-// pages are normalized to this exact measured value (rather than a "nicer" derived
-// one) so they end up pixel-consistent with their Puppeteer-rendered siblings in the
-// same merged document — that consistency is the whole point of this normalization.
-export const A4_SIZE = { width: 595.91998, height: 841.91998 }
-
 // Fits a passthrough page's own content (whatever its native size/aspect ratio) into
-// an A4 canvas, with `margin` reserved as a visual inset — the same model Puppeteer
-// uses for the pages it renders (a margin carves out space *within* a fixed-size
-// canvas, it never grows the canvas itself). A single uniform scale factor (the
-// tighter of the two axes) preserves the page's aspect ratio, leaving white bands on
-// the other axis rather than stretching/squashing the content, then the scaled page
-// is centered in the leftover space on that axis. `page.scale()` (pdf-lib) moves
-// content *and* annotations together (verified empirically: a link's /Rect scales
-// consistently with the content it's anchored to), unlike embedPage/drawPage which
-// would flatten the page and drop annotations entirely.
-export const fitPassthroughPageToA4 = (page: PDFPage, margin?: PdfOptions['margin']): void => {
+// the target canvas, with `margin` reserved as a visual inset — the same model
+// Puppeteer uses for the pages it renders (a margin carves out space *within* a
+// fixed-size canvas, it never grows the canvas itself). A single uniform scale factor
+// (the tighter of the two axes) preserves the page's aspect ratio, leaving white
+// bands on the other axis rather than stretching/squashing the content, then the
+// scaled page is centered in the leftover space on that axis. `page.scale()`
+// (pdf-lib) moves content *and* annotations together (verified empirically: a link's
+// /Rect scales consistently with the content it's anchored to), unlike
+// embedPage/drawPage which would flatten the page and drop annotations entirely.
+export const fitPassthroughPageToSize = (page: PDFPage, targetSize: { width: number, height: number }, margin?: PdfOptions['margin']): void => {
   const top = cssLengthToPoints(margin?.top)
   const bottom = cssLengthToPoints(margin?.bottom)
   const left = cssLengthToPoints(margin?.left)
   const right = cssLengthToPoints(margin?.right)
 
-  const contentWidth = A4_SIZE.width - left - right
-  const contentHeight = A4_SIZE.height - top - bottom
+  const contentWidth = targetSize.width - left - right
+  const contentHeight = targetSize.height - top - bottom
 
   const { x, y, width, height } = page.getMediaBox()
   const factor = Math.min(contentWidth / width, contentHeight / height)
@@ -166,16 +255,17 @@ export const fitPassthroughPageToA4 = (page: PDFPage, margin?: PdfOptions['margi
 
   // Same MediaBox-origin-shift technique as before: since scale() doesn't move the
   // page's own (x, y) origin, shifting it by -offset places the (already scaled,
-  // already-positioned) content at the right inset from the new A4 canvas' corner,
+  // already-positioned) content at the right inset from the new canvas' corner,
   // without touching a single drawing/annotation coordinate.
-  page.setMediaBox(x - offsetX, y - offsetY, A4_SIZE.width, A4_SIZE.height)
-  page.setCropBox(x - offsetX, y - offsetY, A4_SIZE.width, A4_SIZE.height)
+  page.setMediaBox(x - offsetX, y - offsetY, targetSize.width, targetSize.height)
+  page.setCropBox(x - offsetX, y - offsetY, targetSize.width, targetSize.height)
 }
 
-export const padPdfPageMargins = async (pdfBytes: Uint8Array, margin?: PdfOptions['margin']): Promise<Uint8Array> => {
+export const padPdfPageMargins = async (pdfBytes: Uint8Array, margin?: PdfOptions['margin'], pageSize?: PdfOptions['pageSize']): Promise<Uint8Array> => {
   const doc = await PDFDocument.load(pdfBytes)
+  const targetSize = getTargetPagePoints(pageSize)
   for (const page of doc.getPages()) {
-    fitPassthroughPageToA4(page, margin)
+    fitPassthroughPageToSize(page, targetSize, margin)
   }
 
   return doc.save({ useObjectStreams: false })
@@ -196,10 +286,10 @@ export const createPDFs = (
     }
     if (isPdfUrl(group)) {
       const bytes = await fetchPdfBytes(group)
-      return padPassthroughMargins ? padPdfPageMargins(bytes, pdfOptions?.margin) : bytes
+      return padPassthroughMargins ? padPdfPageMargins(bytes, pdfOptions?.margin, pdfOptions?.pageSize) : bytes
     }
     if (group instanceof Uint8Array) {
-      return padPassthroughMargins ? padPdfPageMargins(group, pdfOptions?.margin) : group
+      return padPassthroughMargins ? padPdfPageMargins(group, pdfOptions?.margin, pdfOptions?.pageSize) : group
     }
     return convertHtml({ url: group, ...pdfOptions })
   }),
@@ -223,6 +313,7 @@ export const renderPageNumberOverlay = (
     headerTemplate: pdfOptions.headerTemplate,
     footerTemplate: pdfOptions.footerTemplate,
     margin: pdfOptions.margin,
+    pageSize: pdfOptions.pageSize,
     transparent: true,
   })
 }
@@ -254,11 +345,14 @@ export const overlayPages = async (contentPdf: Uint8Array, overlayPdf: Uint8Arra
 
 export const generatePDF = async (itemsToMerge: Item[], pdfOptions?: PdfOptions) => {
   const groups = groupConsecutiveImages(itemsToMerge)
-  const useGlobalPageNumbering = groups.length > 1 && needsGlobalPageNumbering(pdfOptions?.headerTemplate, pdfOptions?.footerTemplate)
+  const useGlobalPageNumbering = groups.length > 1
+    && needsGlobalPageNumbering(pdfOptions?.headerTemplate, pdfOptions?.footerTemplate)
 
-  // Reserve the margin (so the overlay lines up) but paint nothing yet: the
+  // Reserve the margin/pageSize (so the overlay lines up) but paint nothing yet: the
   // header/footer are stamped globally afterwards via the two-pass overlay.
-  const contentPdfOptions = useGlobalPageNumbering ? { margin: pdfOptions?.margin } : pdfOptions
+  const contentPdfOptions = useGlobalPageNumbering
+    ? { margin: pdfOptions?.margin, pageSize: pdfOptions?.pageSize }
+    : pdfOptions
 
   const pdfs = await createPDFs(groups, contentPdfOptions, undefined, useGlobalPageNumbering)
   const mergedPdf = await mergePdfs(pdfs) as Uint8Array<ArrayBuffer>

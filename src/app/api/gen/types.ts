@@ -6,10 +6,13 @@ export type HtmlUrl = string & { readonly __type: 'HtmlUrl' }
 
 export type Item = ImageUrl | PdfUrl | HtmlString | HtmlUrl | Uint8Array
 
+export type PageFormat = 'a4' | 'letter' | 'legal' | 'tabloid' | 'ledger' | 'a3' | 'a5' | 'a6'
+
 export type PdfOptions = {
   headerTemplate?: string,
   footerTemplate?: string,
   margin?: { top?: string, bottom?: string, left?: string, right?: string },
+  pageSize?: { format?: PageFormat, width?: string, height?: string, landscape?: boolean },
 }
 
 export type GenParams = { items: Item[], filename?: string, pdfOptions?: PdfOptions }
@@ -43,5 +46,27 @@ export const validateMargin = (margin: PdfOptions['margin']): void => {
     if (value !== undefined && !isValidCssLength(value)) {
       throw new HttpError(400, `Invalid pdfOptions.margin.${side} value "${value}". Expected a CSS length (e.g. "20mm", "1in", "16px").`)
     }
+  }
+}
+
+const PAGE_FORMATS = new Set<PageFormat>(['a4', 'letter', 'legal', 'tabloid', 'ledger', 'a3', 'a5', 'a6'])
+
+export const validatePageSize = (pageSize: PdfOptions['pageSize']): void => {
+  if (!pageSize) return
+
+  const { format, width, height } = pageSize
+
+  if (format !== undefined && !PAGE_FORMATS.has(format)) {
+    throw new HttpError(400, `Invalid pdfOptions.pageSize.format value "${format}". Expected one of: ${[...PAGE_FORMATS].join(', ')}.`)
+  }
+
+  for (const [side, value] of [['width', width], ['height', height]] as const) {
+    if (value !== undefined && !isValidCssLength(value)) {
+      throw new HttpError(400, `Invalid pdfOptions.pageSize.${side} value "${value}". Expected a CSS length (e.g. "20mm", "1in", "16px").`)
+    }
+  }
+
+  if ((width === undefined) !== (height === undefined)) {
+    throw new HttpError(400, `pdfOptions.pageSize.width and pdfOptions.pageSize.height must be provided together.`)
   }
 }

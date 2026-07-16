@@ -1,16 +1,23 @@
 import type { ImageUrl, PdfUrl } from './types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { A4_SIZE, createPDFs, cssLengthToPoints, fetchPdfBytes, fitPassthroughPageToA4, generatePDF, getBrowserLaunchOptions, groupConsecutiveImages, mergePdfs, needsGlobalPageNumbering, padPdfPageMargins } from './generate'
+import { A4_SIZE, createPDFs, cssLengthToPoints, fetchPdfBytes, fitPassthroughPageToSize, generatePDF, getBrowserLaunchOptions, getTargetPagePoints, groupConsecutiveImages, mergePdfs, needsGlobalPageNumbering, padPdfPageMargins } from './generate'
 import { HttpError } from './types'
 
 const mocks = vi.hoisted(() => {
   const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46])
   const mockPdf = vi.fn().mockResolvedValue(PDF_BYTES)
   const mockAddStyleTag = vi.fn().mockResolvedValue(undefined)
+  const mockEvaluate = vi.fn().mockResolvedValue(undefined)
   const mockGoto = vi.fn().mockResolvedValue(undefined)
   const mockSetContent = vi.fn().mockResolvedValue(undefined)
-  const mockPage = { goto: mockGoto, setContent: mockSetContent, addStyleTag: mockAddStyleTag, pdf: mockPdf }
+  const mockPage = {
+    goto: mockGoto,
+    setContent: mockSetContent,
+    addStyleTag: mockAddStyleTag,
+    evaluate: mockEvaluate,
+    pdf: mockPdf,
+  }
   const mockClose = vi.fn().mockResolvedValue(undefined)
   const mockNewPage = vi.fn().mockResolvedValue(mockPage)
   const mockBrowser = { newPage: mockNewPage, close: mockClose }
@@ -51,6 +58,7 @@ const mocks = vi.hoisted(() => {
     mockGoto,
     mockSetContent,
     mockAddStyleTag,
+    mockEvaluate,
     mockPdf,
     chromiumModule,
     mockChromiumExecutablePath,
@@ -326,7 +334,7 @@ describe('cssLengthToPoints', () => {
   })
 })
 
-describe('fitPassthroughPageToA4', () => {
+describe('fitPassthroughPageToSize', () => {
   it('no margin, page exactly 2x A4 size → scaled by a clean 0.5 factor, centered offset is zero', () => {
     const mockSetMediaBox = vi.fn()
     const mockSetCropBox = vi.fn()
@@ -338,7 +346,7 @@ describe('fitPassthroughPageToA4', () => {
       scale: mockScale,
     }
 
-    fitPassthroughPageToA4(page as never, undefined)
+    fitPassthroughPageToSize(page as never, A4_SIZE, undefined)
 
     expect(mockScale).toHaveBeenCalledWith(0.5, 0.5)
     // Scaled page (0.5x) exactly fills the full A4 canvas (no margin reserved),
@@ -361,7 +369,7 @@ describe('fitPassthroughPageToA4', () => {
     }
     const margin = { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
 
-    fitPassthroughPageToA4(page as never, margin)
+    fitPassthroughPageToSize(page as never, A4_SIZE, margin)
 
     const marginPt = cssLengthToPoints('10mm')
     const contentWidth = A4_SIZE.width - 2 * marginPt
@@ -384,11 +392,52 @@ describe('fitPassthroughPageToA4', () => {
       scale: vi.fn(),
     }
 
-    fitPassthroughPageToA4(page as never, undefined)
+    fitPassthroughPageToSize(page as never, A4_SIZE, undefined)
 
     const [, , boxWidth, boxHeight] = mockSetMediaBox.mock.calls[0]
     expect(boxWidth).toBe(A4_SIZE.width)
     expect(boxHeight).toBe(A4_SIZE.height)
+  })
+
+  it('a non-A4 target size → page fitted/boxed to that target instead', () => {
+    const mockSetMediaBox = vi.fn()
+    const target = { width: 300, height: 400 }
+    const page = {
+      getMediaBox: () => ({ x: 0, y: 0, width: 600, height: 800 }),
+      setMediaBox: mockSetMediaBox,
+      setCropBox: vi.fn(),
+      scale: vi.fn(),
+    }
+
+    fitPassthroughPageToSize(page as never, target, undefined)
+
+    const [, , boxWidth, boxHeight] = mockSetMediaBox.mock.calls[0]
+    expect(boxWidth).toBe(target.width)
+    expect(boxHeight).toBe(target.height)
+  })
+})
+
+describe('getTargetPagePoints', () => {
+  it('no pageSize → A4_SIZE', () => {
+    expect(getTargetPagePoints(undefined)).toEqual(A4_SIZE)
+  })
+
+  it('format: letter → the empirically measured letter dimensions in points (not the naive mm→pt conversion)', () => {
+    const result = getTargetPagePoints({ format: 'letter' })
+    expect(result.width).toBeCloseTo(612, 5)
+    expect(result.height).toBeCloseTo(792, 5)
+  })
+
+  it('custom width/height → converted to points', () => {
+    const result = getTargetPagePoints({ width: '100mm', height: '50mm' })
+    expect(result.width).toBeCloseTo(cssLengthToPoints('100mm'))
+    expect(result.height).toBeCloseTo(cssLengthToPoints('50mm'))
+  })
+
+  it('landscape → width/height swapped', () => {
+    const result = getTargetPagePoints({ landscape: true })
+    expect(result.width).toBe(A4_SIZE.height)
+    expect(result.height).toBe(A4_SIZE.width)
   })
 })
 
@@ -540,6 +589,49 @@ describe('generatePDF', () => {
   it('HtmlString → browser.close() called', async () => {
     await generatePDF(['<p>hello</p>' as never])
     expect(mocks.mockClose).toHaveBeenCalled()
+  })
+
+  it('pdfOptions.pageSize.format: letter → page.pdf() called with that named format instead of a4', async () => {
+    await generatePDF(['<p>hello</p>' as never], { pageSize: { format: 'letter' } })
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({ format: 'letter' }))
+    expect(mocks.mockPdf.mock.calls[0][0]).not.toHaveProperty('width')
+  })
+
+  it('pdfOptions.pageSize.format: a4 (default) → page.pdf() still called with the format shortcut', async () => {
+    await generatePDF(['<p>hello</p>' as never])
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({ format: 'a4' }))
+    expect(mocks.mockPdf.mock.calls[0][0]).not.toHaveProperty('width')
+  })
+
+  it('pdfOptions.pageSize.width/height → page.pdf() called with explicit width/height, no format', async () => {
+    await generatePDF(['<p>hello</p>' as never], { pageSize: { width: '100mm', height: '50mm' } })
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({ width: '100mm', height: '50mm' }))
+    expect(mocks.mockPdf.mock.calls[0][0]).not.toHaveProperty('format')
+  })
+
+  it('pdfOptions.pageSize.landscape → page.pdf() called with landscape: true', async () => {
+    await generatePDF(['<p>hello</p>' as never], { pageSize: { landscape: true } })
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({ landscape: true }))
+  })
+
+  it('no pdfOptions.pageSize at all → preferCSSPageSize: true (target page\'s own @page CSS, if any, still wins)', async () => {
+    await generatePDF(['<p>hello</p>' as never])
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({ preferCSSPageSize: true }))
+  })
+
+  it('any explicit pdfOptions.pageSize field → preferCSSPageSize: false (caller\'s choice always wins over the target page\'s own @page CSS)', async () => {
+    await generatePDF(['<p>hello</p>' as never], { pageSize: { landscape: true } })
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({ preferCSSPageSize: false }))
+  })
+
+  it('no pdfOptions.pageSize at all → page.evaluate() not called to strip @page rules', async () => {
+    await generatePDF(['<p>hello</p>' as never])
+    expect(mocks.mockEvaluate).not.toHaveBeenCalled()
+  })
+
+  it('any explicit pdfOptions.pageSize field → page.evaluate() called to strip @page rules from the target\'s stylesheets (neither preferCSSPageSize: false nor an injected CSS override reliably stops Chromium honoring the target\'s own @page size/margin)', async () => {
+    await generatePDF(['<p>hello</p>' as never], { pageSize: { landscape: true } })
+    expect(mocks.mockEvaluate).toHaveBeenCalledWith(expect.any(Function))
   })
 
   it('PdfUrl → launch NOT called; fetch called with the URL, fetched bytes passed on to the merge', async () => {

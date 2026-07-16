@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
-import type { GenParams, HtmlString, HtmlUrl, ImageUrl, Item, PdfDataUrl, PdfOptions, PdfUrl } from './types'
+import type { GenParams, HtmlString, HtmlUrl, ImageUrl, Item, PageFormat, PdfDataUrl, PdfOptions, PdfUrl } from './types'
 import { Buffer } from 'node:buffer'
-import { HttpError, isImageUrl, isPdfDataUrl, validateMargin } from './types'
+import { HttpError, isImageUrl, isPdfDataUrl, validateMargin, validatePageSize } from './types'
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024
 
@@ -52,14 +52,25 @@ const parsePdfOptionsFromDottedNotation = (get: (key: string) => string | null):
   }
   const hasMargin = Object.values(margin).some(Boolean)
 
-  if (!headerTemplate && !footerTemplate && !hasMargin) return undefined
+  const landscapeRaw = get('pdfOptions.pageSize.landscape')
+  const pageSize = {
+    format: (get('pdfOptions.pageSize.format') || undefined) as PageFormat | undefined,
+    width: get('pdfOptions.pageSize.width') || undefined,
+    height: get('pdfOptions.pageSize.height') || undefined,
+    landscape: landscapeRaw ? ['true', '1'].includes(landscapeRaw.toLowerCase()) : undefined,
+  }
+  const hasPageSize = Object.values(pageSize).some(value => value !== undefined)
+
+  if (!headerTemplate && !footerTemplate && !hasMargin && !hasPageSize) return undefined
 
   validateMargin(hasMargin ? margin : undefined)
+  validatePageSize(hasPageSize ? pageSize : undefined)
 
   return {
     ...headerTemplate && { headerTemplate },
     ...footerTemplate && { footerTemplate },
     ...hasMargin && { margin },
+    ...hasPageSize && { pageSize },
   }
 }
 
@@ -80,6 +91,7 @@ export const parseJsonBody = async (request: NextRequest): Promise<GenParams> =>
   const body = await request.json() as Partial<Record<ItemKey, string | string[]>> & { filename?: string, pdfOptions?: PdfOptions }
 
   validateMargin(body.pdfOptions?.margin)
+  validatePageSize(body.pdfOptions?.pageSize)
 
   return {
     filename: body.filename,

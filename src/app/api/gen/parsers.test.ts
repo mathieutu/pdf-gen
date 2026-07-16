@@ -140,6 +140,39 @@ describe('parseGetParams', () => {
       expect.objectContaining({ status: 400 }),
     )
   })
+
+  it('reads pdfOptions.pageSize.format dotted notation', () => {
+    const result = parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.pageSize.format')}=letter`))
+    expect(result.pdfOptions).toEqual({ pageSize: { format: 'letter' } })
+  })
+
+  it('reads pdfOptions.pageSize.width/height dotted notation', () => {
+    const qs = [`${encodeURIComponent('pdfOptions.pageSize.width')}=100mm`, `${encodeURIComponent('pdfOptions.pageSize.height')}=150mm`].join('&')
+    const result = parseGetParams(getReq(`url=https://example.com&${qs}`))
+    expect(result.pdfOptions).toEqual({ pageSize: { width: '100mm', height: '150mm' } })
+  })
+
+  it('reads pdfOptions.pageSize.landscape=true dotted notation as boolean true', () => {
+    const result = parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.pageSize.landscape')}=true`))
+    expect(result.pdfOptions).toEqual({ pageSize: { landscape: true } })
+  })
+
+  it('reads pdfOptions.pageSize.landscape=false dotted notation as boolean false', () => {
+    const result = parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.pageSize.landscape')}=false`))
+    expect(result.pdfOptions).toEqual({ pageSize: { landscape: false } })
+  })
+
+  it('throws HttpError(400) for invalid pageSize.format value', () => {
+    expect(() => parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.pageSize.format')}=invalid`))).toThrow(
+      expect.objectContaining({ status: 400 }),
+    )
+  })
+
+  it('throws HttpError(400) when pageSize.width is provided without height', () => {
+    expect(() => parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.pageSize.width')}=100mm`))).toThrow(
+      expect.objectContaining({ status: 400 }),
+    )
+  })
 })
 
 describe('parseJsonBody', () => {
@@ -239,6 +272,24 @@ describe('parseJsonBody', () => {
 
   it('throws HttpError(400) for invalid margin value in pdfOptions', async () => {
     await expect(parseJsonBody(jsonReq({ url: 'https://a.com', pdfOptions: { margin: { top: 'notalength' } } }))).rejects.toThrow(
+      expect.objectContaining({ status: 400 }),
+    )
+  })
+
+  it('passes pdfOptions.pageSize through as a native object', async () => {
+    const pdfOptions = { pageSize: { format: 'letter' as const, landscape: true } }
+    const result = await parseJsonBody(jsonReq({ url: 'https://a.com', pdfOptions }))
+    expect(result.pdfOptions).toEqual(pdfOptions)
+  })
+
+  it('throws HttpError(400) for invalid pageSize.format in pdfOptions', async () => {
+    await expect(parseJsonBody(jsonReq({ url: 'https://a.com', pdfOptions: { pageSize: { format: 'invalid' } } }))).rejects.toThrow(
+      expect.objectContaining({ status: 400 }),
+    )
+  })
+
+  it('throws HttpError(400) when pageSize.height is provided without width', async () => {
+    await expect(parseJsonBody(jsonReq({ url: 'https://a.com', pdfOptions: { pageSize: { height: '100mm' } } }))).rejects.toThrow(
       expect.objectContaining({ status: 400 }),
     )
   })
@@ -406,6 +457,22 @@ describe('parseFormBody', () => {
     const fd = new FormData()
     fd.append('url', 'https://example.com')
     fd.append('pdfOptions.margin.top', 'notalength')
+    await expect(parseFormBody(formReq(fd))).rejects.toThrow(expect.objectContaining({ status: 400 }))
+  })
+
+  it('reads pdfOptions.pageSize.* dotted notation', async () => {
+    const fd = new FormData()
+    fd.append('url', 'https://example.com')
+    fd.append('pdfOptions.pageSize.format', 'legal')
+    fd.append('pdfOptions.pageSize.landscape', 'true')
+    const result = await parseFormBody(formReq(fd))
+    expect(result.pdfOptions).toEqual({ pageSize: { format: 'legal', landscape: true } })
+  })
+
+  it('throws HttpError(400) for invalid pageSize.format value', async () => {
+    const fd = new FormData()
+    fd.append('url', 'https://example.com')
+    fd.append('pdfOptions.pageSize.format', 'invalid')
     await expect(parseFormBody(formReq(fd))).rejects.toThrow(expect.objectContaining({ status: 400 }))
   })
 })
