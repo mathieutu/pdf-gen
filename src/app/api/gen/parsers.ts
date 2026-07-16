@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
-import type { GenParams, HtmlString, HtmlUrl, ImageUrl, Item, PdfDataUrl, PdfUrl } from './types'
+import type { GenParams, HtmlString, HtmlUrl, ImageUrl, Item, PdfDataUrl, PdfOptions, PdfUrl } from './types'
 import { Buffer } from 'node:buffer'
-import { HttpError, isImageUrl, isPdfDataUrl } from './types'
+import { HttpError, isImageUrl, isPdfDataUrl, validateMargin } from './types'
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024
 
@@ -41,6 +41,28 @@ const processFileItem = async (file: File): Promise<Item> => {
   throw new HttpError(400, `Unsupported file type "${file.type}". Only PDF, image, and HTML files are accepted.`)
 }
 
+const parsePdfOptionsFromDottedNotation = (get: (key: string) => string | null): PdfOptions | undefined => {
+  const headerTemplate = get('pdfOptions.headerTemplate') || undefined
+  const footerTemplate = get('pdfOptions.footerTemplate') || undefined
+  const margin = {
+    top: get('pdfOptions.margin.top') || undefined,
+    bottom: get('pdfOptions.margin.bottom') || undefined,
+    left: get('pdfOptions.margin.left') || undefined,
+    right: get('pdfOptions.margin.right') || undefined,
+  }
+  const hasMargin = Object.values(margin).some(Boolean)
+
+  if (!headerTemplate && !footerTemplate && !hasMargin) return undefined
+
+  validateMargin(hasMargin ? margin : undefined)
+
+  return {
+    ...headerTemplate && { headerTemplate },
+    ...footerTemplate && { footerTemplate },
+    ...hasMargin && { margin },
+  }
+}
+
 export const ITEM_KEYS = ['url', 'urls', 'merge', 'file', 'files', 'html'] as const
 type ItemKey = typeof ITEM_KEYS[number]
 const ITEM_KEY_SET = new Set<string>(ITEM_KEYS)
@@ -50,15 +72,19 @@ export const parseGetParams = (request: NextRequest): GenParams => {
   return {
     items: ITEM_KEYS.flatMap(key => searchParams.getAll(key)).filter(Boolean).map(processStringItem),
     filename: searchParams.get('filename') || undefined,
+    pdfOptions: parsePdfOptionsFromDottedNotation(key => searchParams.get(key)),
   }
 }
 
 export const parseJsonBody = async (request: NextRequest): Promise<GenParams> => {
-  const body = await request.json() as Partial<Record<ItemKey, string | string[]>> & { filename?: string }
+  const body = await request.json() as Partial<Record<ItemKey, string | string[]>> & { filename?: string, pdfOptions?: PdfOptions }
+
+  validateMargin(body.pdfOptions?.margin)
 
   return {
     filename: body.filename,
     items: ITEM_KEYS.flatMap(key => ensureArray(body[key] ?? [])).map(processStringItem),
+    pdfOptions: body.pdfOptions,
   }
 }
 
@@ -74,5 +100,9 @@ export const parseFormBody = async (request: NextRequest): Promise<GenParams> =>
   return {
     filename: (formData.get('filename') as string) || undefined,
     items,
+    pdfOptions: parsePdfOptionsFromDottedNotation(key => {
+      const value = formData.get(key)
+      return typeof value === 'string' ? value : null
+    }),
   }
 }

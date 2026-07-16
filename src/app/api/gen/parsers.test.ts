@@ -106,6 +106,40 @@ describe('parseGetParams', () => {
     expect(result.items[0]).toBe('https://a.com')
     expect(result.items[1]).toBe('<p>')
   })
+
+  it('returns undefined pdfOptions when none provided', () => {
+    const result = parseGetParams(getReq('url=https://example.com'))
+    expect(result.pdfOptions).toBeUndefined()
+  })
+
+  it('reads pdfOptions.headerTemplate dotted notation', () => {
+    const result = parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.headerTemplate')}=${encodeURIComponent('<div>header</div>')}`))
+    expect(result.pdfOptions).toEqual({ headerTemplate: '<div>header</div>' })
+  })
+
+  it('reads pdfOptions.footerTemplate dotted notation', () => {
+    const result = parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.footerTemplate')}=${encodeURIComponent('<div>footer</div>')}`))
+    expect(result.pdfOptions).toEqual({ footerTemplate: '<div>footer</div>' })
+  })
+
+  it('reads pdfOptions.margin.* dotted notation', () => {
+    const qs = ['top', 'bottom', 'left', 'right']
+      .map(side => `${encodeURIComponent(`pdfOptions.margin.${side}`)}=20mm`)
+      .join('&')
+    const result = parseGetParams(getReq(`url=https://example.com&${qs}`))
+    expect(result.pdfOptions).toEqual({ margin: { top: '20mm', bottom: '20mm', left: '20mm', right: '20mm' } })
+  })
+
+  it('partial margin fields only include provided sides', () => {
+    const result = parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.margin.top')}=10mm`))
+    expect(result.pdfOptions).toEqual({ margin: { top: '10mm' } })
+  })
+
+  it('throws HttpError(400) for invalid margin value', () => {
+    expect(() => parseGetParams(getReq(`url=https://example.com&${encodeURIComponent('pdfOptions.margin.top')}=notalength`))).toThrow(
+      expect.objectContaining({ status: 400 }),
+    )
+  })
 })
 
 describe('parseJsonBody', () => {
@@ -190,6 +224,23 @@ describe('parseJsonBody', () => {
     expect(result.items).toHaveLength(2)
     expect(result.items).toContain('https://a.com')
     expect(result.items).toContain('<p>hi</p>')
+  })
+
+  it('returns undefined pdfOptions when none provided', async () => {
+    const result = await parseJsonBody(jsonReq({ url: 'https://a.com' }))
+    expect(result.pdfOptions).toBeUndefined()
+  })
+
+  it('passes pdfOptions through as a native object', async () => {
+    const pdfOptions = { headerTemplate: '<div>h</div>', footerTemplate: '<div>f</div>', margin: { top: '20mm', bottom: '16mm', left: '14mm', right: '14mm' } }
+    const result = await parseJsonBody(jsonReq({ url: 'https://a.com', pdfOptions }))
+    expect(result.pdfOptions).toEqual(pdfOptions)
+  })
+
+  it('throws HttpError(400) for invalid margin value in pdfOptions', async () => {
+    await expect(parseJsonBody(jsonReq({ url: 'https://a.com', pdfOptions: { margin: { top: 'notalength' } } }))).rejects.toThrow(
+      expect.objectContaining({ status: 400 }),
+    )
   })
 })
 
@@ -321,6 +372,40 @@ describe('parseFormBody', () => {
   it('unsupported data URL in string field → HttpError(400)', async () => {
     const fd = new FormData()
     fd.append('url', 'data:video/mp4;base64,abc')
+    await expect(parseFormBody(formReq(fd))).rejects.toThrow(expect.objectContaining({ status: 400 }))
+  })
+
+  it('returns undefined pdfOptions when none provided', async () => {
+    const fd = new FormData()
+    fd.append('url', 'https://example.com')
+    const result = await parseFormBody(formReq(fd))
+    expect(result.pdfOptions).toBeUndefined()
+  })
+
+  it('reads pdfOptions.headerTemplate/.footerTemplate dotted notation', async () => {
+    const fd = new FormData()
+    fd.append('url', 'https://example.com')
+    fd.append('pdfOptions.headerTemplate', '<div>header</div>')
+    fd.append('pdfOptions.footerTemplate', '<div>footer</div>')
+    const result = await parseFormBody(formReq(fd))
+    expect(result.pdfOptions).toEqual({ headerTemplate: '<div>header</div>', footerTemplate: '<div>footer</div>' })
+  })
+
+  it('reads pdfOptions.margin.* dotted notation', async () => {
+    const fd = new FormData()
+    fd.append('url', 'https://example.com')
+    fd.append('pdfOptions.margin.top', '20mm')
+    fd.append('pdfOptions.margin.bottom', '16mm')
+    fd.append('pdfOptions.margin.left', '14mm')
+    fd.append('pdfOptions.margin.right', '14mm')
+    const result = await parseFormBody(formReq(fd))
+    expect(result.pdfOptions).toEqual({ margin: { top: '20mm', bottom: '16mm', left: '14mm', right: '14mm' } })
+  })
+
+  it('throws HttpError(400) for invalid margin value', async () => {
+    const fd = new FormData()
+    fd.append('url', 'https://example.com')
+    fd.append('pdfOptions.margin.top', 'notalength')
     await expect(parseFormBody(formReq(fd))).rejects.toThrow(expect.objectContaining({ status: 400 }))
   })
 })

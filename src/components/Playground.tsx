@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { EXAMPLE_FILENAME, EXAMPLE_HTML, EXAMPLE_HTML_URL, EXAMPLE_IMAGE_URL, EXAMPLE_PDF_URL } from '@/lib/examples'
+import { EXAMPLE_FILENAME, EXAMPLE_FOOTER_TEMPLATE, EXAMPLE_HEADER_TEMPLATE, EXAMPLE_HTML, EXAMPLE_HTML_URL, EXAMPLE_IMAGE_URL, EXAMPLE_MARGIN, EXAMPLE_PDF_URL } from '@/lib/examples'
 
 const inputCls = `
   w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm
@@ -116,29 +116,29 @@ export const Playground = () => {
                   <div key={item.id} className="flex gap-2">
                     {item.type === 'url'
                       ? (
-                          <input
-                            type="url"
-                            name="url"
-                            value={item.value}
-                            onChange={e => setMergeItems(curr => curr.map(val => val.id === item.id ? { id: item.id, type: 'url', value: e.target.value } : val))}
-                            placeholder="https://example.com/doc.pdf"
-                            className={inputCls}
-                          />
-                        )
+                        <input
+                          type="url"
+                          name="url"
+                          value={item.value}
+                          onChange={e => setMergeItems(curr => curr.map(val => val.id === item.id ? { id: item.id, type: 'url', value: e.target.value } : val))}
+                          placeholder="https://example.com/doc.pdf"
+                          className={inputCls}
+                        />
+                      )
                       : (
-                          <input
-                            type="file"
-                            name="file"
-                            accept=".pdf,.html,text/html,image/*"
-                            className={`
+                        <input
+                          type="file"
+                          name="file"
+                          accept=".pdf,.html,text/html,image/*"
+                          className={`
                               ${inputCls}
                               file:mr-2 file:rounded-sm file:border-0
                               file:bg-gray-200 file:px-2 file:py-1 file:text-xs
                               file:text-gray-700
                               dark:file:bg-gray-700 dark:file:text-gray-300
                             `}
-                          />
-                        )}
+                        />
+                      )}
                     {mergeItems.length > 1 && (
                       <button
                         type="button"
@@ -199,6 +199,71 @@ export const Playground = () => {
                 />
               </div>
             )}
+
+            {/* Header template — POST only */}
+            {method === 'POST' && (
+              <div>
+                <label className={labelCls}>
+                  Header template
+                  <span className="ml-1 font-normal text-gray-400">(optional)</span>
+                </label>
+                <textarea
+                  name="pdfOptions.headerTemplate"
+                  defaultValue={EXAMPLE_HEADER_TEMPLATE}
+                  placeholder="<div>My Company</div>"
+                  rows={3}
+                  className={`
+                    ${inputCls}
+                    resize-y font-mono text-xs
+                  `}
+                />
+              </div>
+            )}
+
+            {/* Footer template — POST only */}
+            {method === 'POST' && (
+              <div>
+                <label className={labelCls}>
+                  Footer template
+                  <span className="ml-1 font-normal text-gray-400">(optional)</span>
+                </label>
+                <textarea
+                  name="pdfOptions.footerTemplate"
+                  defaultValue={EXAMPLE_FOOTER_TEMPLATE}
+                  placeholder='<div>Page <span class="pageNumber"></span> / <span class="totalPages"></span></div>'
+                  rows={3}
+                  className={`
+                    ${inputCls}
+                    resize-y font-mono text-xs
+                  `}
+                />
+              </div>
+            )}
+
+            {/* Margin */}
+            <fieldset>
+              <legend className={labelCls}>
+                Margin
+                <span className="ml-1 font-normal text-gray-400">(optional)</span>
+              </legend>
+              <div className="
+                grid grid-cols-2 gap-2
+                sm:grid-cols-4
+              "
+              >
+                {(['top', 'bottom', 'left', 'right'] as const).map(side => (
+                  <input
+                    key={side}
+                    type="text"
+                    name={`pdfOptions.margin.${side}`}
+                    defaultValue={EXAMPLE_MARGIN[side]}
+                    placeholder={side}
+                    aria-label={`Margin ${side}`}
+                    className={inputCls}
+                  />
+                ))}
+              </div>
+            </fieldset>
 
             <button
               type="submit"

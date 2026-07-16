@@ -6,7 +6,13 @@ export type HtmlUrl = string & { readonly __type: 'HtmlUrl' }
 
 export type Item = ImageUrl | PdfUrl | HtmlString | HtmlUrl | Uint8Array
 
-export type GenParams = { items: Item[], filename?: string }
+export type PdfOptions = {
+  headerTemplate?: string,
+  footerTemplate?: string,
+  margin?: { top?: string, bottom?: string, left?: string, right?: string },
+}
+
+export type GenParams = { items: Item[], filename?: string, pdfOptions?: PdfOptions }
 
 export class HttpError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -25,3 +31,17 @@ export const isPdfDataUrl = (item: unknown): item is PdfDataUrl =>
 
 export const isHtmlString = (item: unknown): item is HtmlString =>
   typeof item === 'string' && item.trimStart().startsWith('<')
+
+const CSS_LENGTH_REGEX = /^\d+(?:\.\d+)?(?:px|in|cm|mm)?$/i
+
+export const isValidCssLength = (value: string): boolean => CSS_LENGTH_REGEX.test(value)
+
+export const validateMargin = (margin: PdfOptions['margin']): void => {
+  if (!margin) return
+
+  for (const [side, value] of Object.entries(margin)) {
+    if (value !== undefined && !isValidCssLength(value)) {
+      throw new HttpError(400, `Invalid pdfOptions.margin.${side} value "${value}". Expected a CSS length (e.g. "20mm", "1in", "16px").`)
+    }
+  }
+}

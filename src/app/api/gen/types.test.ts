@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HttpError, isHtmlString, isImageUrl, isPdfDataUrl, isPdfUrl } from './types'
+import { HttpError, isHtmlString, isImageUrl, isPdfDataUrl, isPdfUrl, isValidCssLength, validateMargin } from './types'
 
 describe('isImageUrl', () => {
   it('returns false for number', () => expect(isImageUrl(42)).toBe(false))
@@ -81,6 +81,36 @@ describe('isHtmlString', () => {
   it('returns false for URL', () => expect(isHtmlString('https://example.com')).toBe(false))
   it('returns false for plain text', () => expect(isHtmlString('plain text')).toBe(false))
   it('returns false for data:text/html;...', () => expect(isHtmlString('data:text/html;base64,abc')).toBe(false))
+})
+
+describe('isValidCssLength', () => {
+  it('returns true for plain number', () => expect(isValidCssLength('20')).toBe(true))
+  it('returns true for decimal number', () => expect(isValidCssLength('2.5')).toBe(true))
+  it('returns true for mm', () => expect(isValidCssLength('20mm')).toBe(true))
+  it('returns true for cm', () => expect(isValidCssLength('2cm')).toBe(true))
+  it('returns true for in', () => expect(isValidCssLength('1in')).toBe(true))
+  it('returns true for px', () => expect(isValidCssLength('16px')).toBe(true))
+  it('is case-insensitive', () => expect(isValidCssLength('20MM')).toBe(true))
+
+  it('returns false for negative number', () => expect(isValidCssLength('-20mm')).toBe(false))
+  it('returns false for unsupported unit', () => expect(isValidCssLength('20pt')).toBe(false))
+  it('returns false for empty string', () => expect(isValidCssLength('')).toBe(false))
+  it('returns false for non-numeric string', () => expect(isValidCssLength('auto')).toBe(false))
+})
+
+describe('validateMargin', () => {
+  it('does not throw for undefined margin', () => expect(() => validateMargin(undefined)).not.toThrow())
+  it('does not throw for valid margin', () => expect(() => validateMargin({ top: '20mm', bottom: '16mm', left: '14mm', right: '14mm' })).not.toThrow())
+  it('does not throw for partial margin', () => expect(() => validateMargin({ top: '20mm' })).not.toThrow())
+
+  it('throws HttpError(400) for invalid margin field', () => {
+    expect(() => validateMargin({ top: 'invalid' })).toThrow(HttpError)
+    expect(() => validateMargin({ top: 'invalid' })).toThrow(expect.objectContaining({ status: 400 }))
+  })
+
+  it('error message mentions the invalid side', () => {
+    expect(() => validateMargin({ left: 'invalid' })).toThrow(/left/)
+  })
 })
 
 describe('error class HttpError', () => {

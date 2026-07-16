@@ -1,7 +1,8 @@
 import type { ImageUrl, PdfUrl } from './types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createPDFs, generatePDF, getBrowserLaunchOptions, groupConsecutiveImages } from './generate'
+import { createPDFs, cssLengthToPoints, fetchPdfBytes, generatePDF, getBrowserLaunchOptions, groupConsecutiveImages, mergePdfs, needsGlobalPageNumbering, padPdfPageMargins } from './generate'
+import { HttpError } from './types'
 
 const mocks = vi.hoisted(() => {
   const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46])
@@ -29,12 +30,15 @@ const mocks = vi.hoisted(() => {
     executablePath: mockChromiumExecutablePath,
   }
 
-  const mockAdd = vi.fn().mockResolvedValue(undefined)
-  const mockSaveAsBuffer = vi.fn().mockResolvedValue(PDF_BYTES)
-  const MockPDFMerger = vi.fn(class MockPDFMerger {
-    add = mockAdd
-    saveAsBuffer = mockSaveAsBuffer
-  })
+  const mockDrawPage = vi.fn()
+  const mockEmbedPage = vi.fn().mockResolvedValue('embedded-page')
+  const mockSave = vi.fn().mockResolvedValue(PDF_BYTES)
+  const mockPDFDocumentLoad = vi.fn()
+  const mockCopyPages = vi.fn()
+  const mockAddPage = vi.fn()
+  const mockPDFDocumentCreate = vi.fn()
+  const mockSetMediaBox = vi.fn()
+  const mockSetCropBox = vi.fn()
 
   return {
     PDF_BYTES,
@@ -49,9 +53,15 @@ const mocks = vi.hoisted(() => {
     mockPdf,
     chromiumModule,
     mockChromiumExecutablePath,
-    MockPDFMerger,
-    mockAdd,
-    mockSaveAsBuffer,
+    mockDrawPage,
+    mockEmbedPage,
+    mockSave,
+    mockPDFDocumentLoad,
+    mockCopyPages,
+    mockAddPage,
+    mockPDFDocumentCreate,
+    mockSetMediaBox,
+    mockSetCropBox,
     getChromiumGraphicsMode: () => chromiumGraphicsMode,
     resetChromiumGraphicsMode: () => {
       chromiumGraphicsMode = true
@@ -61,10 +71,31 @@ const mocks = vi.hoisted(() => {
 
 const FAKE_PDF = mocks.PDF_BYTES
 
+const makeFakePage = (width = 595, height = 842) => ({
+  getSize: () => ({ width, height }),
+  drawPage: mocks.mockDrawPage,
+  getMediaBox: () => ({ x: 0, y: 0, width, height }),
+  setMediaBox: mocks.mockSetMediaBox,
+  setCropBox: mocks.mockSetCropBox,
+})
+
+const makeFakeDoc = (pageCount = 1) => ({
+  getPageIndices: () => Array.from({ length: pageCount }, (_, index) => index),
+  getPageCount: () => pageCount,
+  getPages: () => Array.from({ length: pageCount }, () => makeFakePage()),
+  embedPage: mocks.mockEmbedPage,
+  save: mocks.mockSave,
+})
+
 vi.mock('puppeteer-core', () => ({ default: { launch: mocks.mockLaunch } }))
 vi.mock('puppeteer', () => ({ executablePath: mocks.mockPuppeteerExecutablePath }))
 vi.mock('@sparticuz/chromium', () => ({ default: mocks.chromiumModule }))
-vi.mock('pdf-merger-js', () => ({ default: mocks.MockPDFMerger }))
+vi.mock('pdf-lib', () => ({
+  PDFDocument: {
+    load: mocks.mockPDFDocumentLoad,
+    create: mocks.mockPDFDocumentCreate,
+  },
+}))
 
 describe('groupConsecutiveImages', () => {
   it('empty array → empty array', () => {
@@ -128,16 +159,24 @@ describe('groupConsecutiveImages', () => {
 })
 
 describe('createPDFs', () => {
-  it('routes HTML/url groups through injected converter and keeps existing PDFs untouched', async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('routes HTML/url groups through injected converter, fetches PdfUrl groups, and keeps existing Uint8Array PDFs untouched', async () => {
     const convertedImageGroup = new Uint8Array([1])
     const convertedHtml = new Uint8Array([2])
     const convertedUrl = new Uint8Array([3])
     const existingPdfBytes = new Uint8Array([9, 9])
+    const fetchedPdfBytes = new Uint8Array([4, 4])
 
     const convertHtml = vi.fn()
       .mockResolvedValueOnce(convertedImageGroup)
       .mockResolvedValueOnce(convertedHtml)
       .mockResolvedValueOnce(convertedUrl)
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => fetchedPdfBytes.buffer })
+    vi.stubGlobal('fetch', mockFetch)
 
     const result = await createPDFs([
       ['a.png', 'b.jpg'],
@@ -145,7 +184,7 @@ describe('createPDFs', () => {
       'https://example.com/page',
       'doc.pdf',
       existingPdfBytes,
-    ], convertHtml)
+    ], undefined, convertHtml)
 
     expect(convertHtml).toHaveBeenCalledTimes(3)
     expect(convertHtml).toHaveBeenNthCalledWith(1, {
@@ -153,8 +192,186 @@ describe('createPDFs', () => {
     })
     expect(convertHtml).toHaveBeenNthCalledWith(2, { html: '<p>inline html</p>' })
     expect(convertHtml).toHaveBeenNthCalledWith(3, { url: 'https://example.com/page' })
-    expect(result).toEqual([convertedImageGroup, convertedHtml, convertedUrl, 'doc.pdf', existingPdfBytes])
+    expect(mockFetch).toHaveBeenCalledWith('doc.pdf')
+    expect(result).toEqual([convertedImageGroup, convertedHtml, convertedUrl, fetchedPdfBytes, existingPdfBytes])
     expect(mocks.mockLaunch).not.toHaveBeenCalled()
+  })
+
+  it('PdfUrl group → fetch always called, even when padPassthroughMargins is false/omitted', async () => {
+    const fetchedPdfBytes = new Uint8Array([4, 4])
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => fetchedPdfBytes.buffer })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const result = await createPDFs(['doc.pdf'], undefined, vi.fn())
+
+    expect(mockFetch).toHaveBeenCalledWith('doc.pdf')
+    expect(result).toEqual([fetchedPdfBytes])
+  })
+
+  it('padPassthroughMargins omitted/false (default) → bytes come out unchanged, no padPdfPageMargins involved', async () => {
+    const existingPdfBytes = new Uint8Array([9, 9])
+
+    const result = await createPDFs([existingPdfBytes], undefined, vi.fn())
+
+    expect(result).toEqual([existingPdfBytes])
+    expect(mocks.mockPDFDocumentLoad).not.toHaveBeenCalled()
+  })
+
+  it('padPassthroughMargins: true + Uint8Array group → padPdfPageMargins applied directly, no fetch', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+    const fakeDoc = { getPages: () => [], save: vi.fn().mockResolvedValue(new Uint8Array([5])) }
+    mocks.mockPDFDocumentLoad.mockReset().mockResolvedValue(fakeDoc)
+
+    const existingPdfBytes = new Uint8Array([9, 9])
+    // margin is non-zero so padPdfPageMargins actually takes the PDFDocument.load branch
+    const result = await createPDFs([existingPdfBytes], { margin: { top: '10px' } }, vi.fn(), true)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledWith(existingPdfBytes)
+    expect(result).not.toEqual([existingPdfBytes])
+  })
+
+  it('padPassthroughMargins: true + PdfUrl group → fetch then padPdfPageMargins applied on the result', async () => {
+    const fetchedPdfBytes = new Uint8Array([4, 4])
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => fetchedPdfBytes.buffer })
+    vi.stubGlobal('fetch', mockFetch)
+    const fakeDoc = { getPages: () => [], save: vi.fn().mockResolvedValue(new Uint8Array([5])) }
+    mocks.mockPDFDocumentLoad.mockReset().mockResolvedValue(fakeDoc)
+
+    await createPDFs(['doc.pdf'], { margin: { top: '10px' } }, vi.fn(), true)
+
+    expect(mockFetch).toHaveBeenCalledWith('doc.pdf')
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledWith(fetchedPdfBytes)
+  })
+})
+
+describe('mergePdfs', () => {
+  beforeEach(() => {
+    mocks.mockPDFDocumentCreate.mockReset()
+    mocks.mockPDFDocumentLoad.mockReset()
+    mocks.mockCopyPages.mockReset()
+    mocks.mockAddPage.mockReset()
+    mocks.mockSave.mockReset()
+  })
+
+  it('calls PDFDocument.create() once, PDFDocument.load() once per input PDF in order, copyPages/addPage for each, and returns save() result', async () => {
+    const mergedDoc = { copyPages: mocks.mockCopyPages, addPage: mocks.mockAddPage, save: mocks.mockSave }
+    mocks.mockPDFDocumentCreate.mockResolvedValue(mergedDoc)
+    const doc1 = { getPageIndices: () => [0] }
+    const doc2 = { getPageIndices: () => [0, 1] }
+    mocks.mockPDFDocumentLoad
+      .mockResolvedValueOnce(doc1)
+      .mockResolvedValueOnce(doc2)
+    mocks.mockCopyPages
+      .mockResolvedValueOnce(['page-a'])
+      .mockResolvedValueOnce(['page-b', 'page-c'])
+    const savedBytes = new Uint8Array([1, 2, 3])
+    mocks.mockSave.mockResolvedValue(savedBytes)
+
+    const pdf1 = new Uint8Array([1])
+    const pdf2 = new Uint8Array([2])
+    const result = await mergePdfs([pdf1, pdf2])
+
+    expect(mocks.mockPDFDocumentCreate).toHaveBeenCalledTimes(1)
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenNthCalledWith(1, pdf1)
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenNthCalledWith(2, pdf2)
+    expect(mocks.mockCopyPages).toHaveBeenNthCalledWith(1, doc1, [0])
+    expect(mocks.mockCopyPages).toHaveBeenNthCalledWith(2, doc2, [0, 1])
+    expect(mocks.mockAddPage).toHaveBeenCalledTimes(3)
+    expect(mocks.mockAddPage).toHaveBeenNthCalledWith(1, 'page-a')
+    expect(mocks.mockAddPage).toHaveBeenNthCalledWith(2, 'page-b')
+    expect(mocks.mockAddPage).toHaveBeenNthCalledWith(3, 'page-c')
+    expect(mocks.mockSave).toHaveBeenCalledWith({ useObjectStreams: false })
+    expect(result).toBe(savedBytes)
+  })
+})
+
+describe('fetchPdfBytes', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('fetch called with the URL, returns a Uint8Array of the content', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => bytes.buffer })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const result = await fetchPdfBytes('https://example.com/doc.pdf')
+
+    expect(mockFetch).toHaveBeenCalledWith('https://example.com/doc.pdf')
+    expect(result).toEqual(bytes)
+  })
+
+  it('ok: false → rejects with HttpError(502)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await expect(fetchPdfBytes('https://example.com/doc.pdf')).rejects.toThrow(HttpError)
+    await expect(fetchPdfBytes('https://example.com/doc.pdf')).rejects.toMatchObject({ status: 502 })
+  })
+})
+
+describe('cssLengthToPoints', () => {
+  it.each([
+    ['20mm', 56.7],
+    ['1in', 72],
+    ['96px', 72],
+    ['96', 72],
+    [undefined, 0],
+  ])('%s → %s', (value, expected) => {
+    expect(cssLengthToPoints(value)).toBeCloseTo(expected)
+  })
+})
+
+describe('padPdfPageMargins', () => {
+  beforeEach(() => {
+    mocks.mockPDFDocumentLoad.mockReset()
+  })
+
+  it('all margins 0/absent → returns the input buffer strictly unchanged, no PDFDocument.load (fast path)', async () => {
+    const pdfBytes = new Uint8Array([1, 2, 3])
+
+    const result = await padPdfPageMargins(pdfBytes, undefined)
+
+    expect(result).toBe(pdfBytes)
+    expect(mocks.mockPDFDocumentLoad).not.toHaveBeenCalled()
+  })
+
+  it('non-zero margin → setMediaBox/setCropBox called with mediaBox ± margin (in points) for each page', async () => {
+    const mockSetMediaBox = vi.fn()
+    const mockSetCropBox = vi.fn()
+    const page = {
+      getMediaBox: () => ({ x: 0, y: 0, width: 595, height: 842 }),
+      setMediaBox: mockSetMediaBox,
+      setCropBox: mockSetCropBox,
+    }
+    const savedBytes = new Uint8Array([9])
+    mocks.mockPDFDocumentLoad.mockResolvedValue({ getPages: () => [page], save: vi.fn().mockResolvedValue(savedBytes) })
+
+    const result = await padPdfPageMargins(new Uint8Array([1]), { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' })
+
+    const marginPt = cssLengthToPoints('10mm')
+    expect(mockSetMediaBox).toHaveBeenCalledWith(-marginPt, -marginPt, 595 + 2 * marginPt, 842 + 2 * marginPt)
+    expect(mockSetCropBox).toHaveBeenCalledWith(-marginPt, -marginPt, 595 + 2 * marginPt, 842 + 2 * marginPt)
+    expect(result).toBe(savedBytes)
+  })
+
+  it('several pages of different sizes in the same document → each page is padded from its own getMediaBox()', async () => {
+    const mockSetMediaBoxA = vi.fn()
+    const mockSetMediaBoxB = vi.fn()
+    const pageA = { getMediaBox: () => ({ x: 0, y: 0, width: 595, height: 842 }), setMediaBox: mockSetMediaBoxA, setCropBox: vi.fn() }
+    const pageB = { getMediaBox: () => ({ x: 0, y: 0, width: 842, height: 595 }), setMediaBox: mockSetMediaBoxB, setCropBox: vi.fn() }
+    mocks.mockPDFDocumentLoad.mockResolvedValue({
+      getPages: () => [pageA, pageB],
+      save: vi.fn().mockResolvedValue(new Uint8Array()),
+    })
+
+    await padPdfPageMargins(new Uint8Array([1]), { top: '10mm' })
+
+    const marginPt = cssLengthToPoints('10mm')
+    expect(mockSetMediaBoxA).toHaveBeenCalledWith(0, 0, 595, 842 + marginPt)
+    expect(mockSetMediaBoxB).toHaveBeenCalledWith(0, 0, 842, 595 + marginPt)
   })
 })
 
@@ -164,15 +381,27 @@ describe('generatePDF', () => {
     vi.stubEnv('NODE_ENV', 'test')
     vi.stubEnv('VERCEL', undefined)
     vi.stubEnv('CI', undefined)
-    mocks.mockSaveAsBuffer.mockResolvedValue(FAKE_PDF)
-    mocks.mockAdd.mockResolvedValue(undefined)
     mocks.mockPdf.mockResolvedValue(FAKE_PDF)
+    mocks.mockPDFDocumentCreate.mockReset().mockResolvedValue({
+      copyPages: mocks.mockCopyPages,
+      addPage: mocks.mockAddPage,
+      save: mocks.mockSave,
+    })
+    mocks.mockCopyPages.mockReset().mockResolvedValue(['copied-page'])
+    mocks.mockAddPage.mockReset()
+    mocks.mockPDFDocumentLoad.mockReset().mockResolvedValue(makeFakeDoc())
+    mocks.mockEmbedPage.mockReset().mockResolvedValue('embedded-page')
+    mocks.mockDrawPage.mockReset()
+    mocks.mockSetMediaBox.mockReset()
+    mocks.mockSetCropBox.mockReset()
+    mocks.mockSave.mockReset().mockResolvedValue(FAKE_PDF)
     mocks.resetChromiumGraphicsMode()
   })
 
   afterEach(() => {
     vi.clearAllMocks()
     vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
   })
 
   it('local env → uses puppeteer executablePath only, sandbox kept enabled', async () => {
@@ -247,17 +476,23 @@ describe('generatePDF', () => {
     expect(mocks.mockClose).toHaveBeenCalled()
   })
 
-  it('PdfUrl → launch NOT called; merger.add called with the string', async () => {
+  it('PdfUrl → launch NOT called; fetch called with the URL, fetched bytes passed on to the merge', async () => {
+    const fetchedBytes = new Uint8Array([1, 2, 3])
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => fetchedBytes.buffer })
+    vi.stubGlobal('fetch', mockFetch)
+
     await generatePDF(['doc.pdf' as PdfUrl])
+
     expect(mocks.mockLaunch).not.toHaveBeenCalled()
-    expect(mocks.mockAdd).toHaveBeenCalledWith('doc.pdf')
+    expect(mockFetch).toHaveBeenCalledWith('doc.pdf')
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledWith(fetchedBytes)
   })
 
-  it('Uint8Array → launch NOT called; merger.add called with the Uint8Array', async () => {
+  it('Uint8Array → launch NOT called; PDFDocument.load called with the Uint8Array during merge', async () => {
     const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46])
     await generatePDF([pdf])
     expect(mocks.mockLaunch).not.toHaveBeenCalled()
-    expect(mocks.mockAdd).toHaveBeenCalledWith(pdf)
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledWith(pdf)
   })
 
   it('HtmlUrl → goto called with the URL', async () => {
@@ -281,27 +516,30 @@ describe('generatePDF', () => {
   })
 
   it('2 non-consecutive images (separated by a PdfUrl) → two launch calls', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer }))
+
     await generatePDF(['a.png' as ImageUrl, 'doc.pdf' as PdfUrl, 'b.png' as ImageUrl])
     expect(mocks.mockLaunch).toHaveBeenCalledTimes(2)
   })
 
-  it('result = value of merger.saveAsBuffer()', async () => {
+  it('result = value of mergePdfs\' save() (no two-pass overlay)', async () => {
     const expected = new Uint8Array([1, 2, 3])
-    mocks.mockSaveAsBuffer.mockResolvedValue(expected)
+    mocks.mockSave.mockResolvedValue(expected)
     const result = await generatePDF(['<p>test</p>' as never])
     expect(result).toBe(expected)
   })
 
-  it('merger.add called N times (one per group/item)', async () => {
+  it('PDFDocument.load/addPage called N times (once per group/item) when merging', async () => {
     const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46])
     await generatePDF([pdf, '<p>html</p>' as never, 'img.png' as ImageUrl])
-    expect(mocks.mockAdd).toHaveBeenCalledTimes(3)
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledTimes(3)
+    expect(mocks.mockAddPage).toHaveBeenCalledTimes(3)
   })
 
-  it('new PDFMerger is created at each call', async () => {
+  it('PDFDocument.create() is called once per generatePDF call (fresh merge each time)', async () => {
     await generatePDF(['<p>first</p>' as never])
     await generatePDF(['<p>second</p>' as never])
-    expect(mocks.MockPDFMerger).toHaveBeenCalledTimes(2)
+    expect(mocks.mockPDFDocumentCreate).toHaveBeenCalledTimes(2)
   })
 
   it('test env: browser launch uses local executablePath resolver', async () => {
@@ -309,5 +547,148 @@ describe('generatePDF', () => {
 
     expect(mocks.mockPuppeteerExecutablePath).toHaveBeenCalledTimes(1)
     expect(mocks.mockChromiumExecutablePath).not.toHaveBeenCalled()
+  })
+
+  it('single group + pageNumber template → pass-through directly, only the merge-level PDFDocument.load (no two-pass overlay)', async () => {
+    const pdfOptions = { footerTemplate: '<span class="pageNumber"></span>/<span class="totalPages"></span>' }
+    await generatePDF(['<p>hello</p>' as never], pdfOptions)
+
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({
+      displayHeaderFooter: true,
+      footerTemplate: pdfOptions.footerTemplate,
+    }))
+    // a single group never triggers useGlobalPageNumbering (groups.length > 1
+    // is required), so the only PDFDocument.load call left is mergePdfs' own
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledTimes(1)
+  })
+
+  it('footerTemplate without headerTemplate → headerTemplate defaults to an empty element (no Puppeteer default header leaks in)', async () => {
+    const pdfOptions = { footerTemplate: '<div>footer</div>' }
+    await generatePDF(['<p>hello</p>' as never], pdfOptions)
+
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({
+      headerTemplate: '<span></span>',
+      footerTemplate: pdfOptions.footerTemplate,
+    }))
+  })
+
+  it('headerTemplate without footerTemplate → footerTemplate defaults to an empty element', async () => {
+    const pdfOptions = { headerTemplate: '<div>header</div>' }
+    await generatePDF(['<p>hello</p>' as never], pdfOptions)
+
+    expect(mocks.mockPdf).toHaveBeenCalledWith(expect.objectContaining({
+      headerTemplate: pdfOptions.headerTemplate,
+      footerTemplate: '<span></span>',
+    }))
+  })
+
+  it('multi-groups + static header/footer → pass-through per group, no two-pass overlay, no passthrough margin padding', async () => {
+    const pdfOptions = { headerTemplate: '<div>My Company</div>' }
+    await generatePDF(['<p>1</p>' as never, '<p>2</p>' as never], pdfOptions)
+
+    expect(mocks.mockPdf).toHaveBeenCalledTimes(2)
+    for (const call of mocks.mockPdf.mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({ displayHeaderFooter: true, headerTemplate: pdfOptions.headerTemplate }))
+    }
+    // no overlay pass: only the 2 merge-level PDFDocument.load calls (one per group)
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledTimes(2)
+    expect(mocks.mockSetMediaBox).not.toHaveBeenCalled()
+  })
+
+  it('multi-groups + static header/footer + Uint8Array passthrough group → passthrough page kept at its original size (padPassthroughMargins false outside two-pass)', async () => {
+    const passthroughPdf = new Uint8Array([0x25, 0x50, 0x44, 0x46])
+    const pdfOptions = { headerTemplate: '<div>My Company</div>', margin: { top: '20mm' } }
+
+    await generatePDF(['<p>1</p>' as never, passthroughPdf], pdfOptions)
+
+    expect(mocks.mockSetMediaBox).not.toHaveBeenCalled()
+    expect(mocks.mockSetCropBox).not.toHaveBeenCalled()
+  })
+
+  it('multi-groups + pageNumber/totalPages → two-pass overlay path', async () => {
+    const finalBytes = new Uint8Array([7, 7, 7])
+    const overlayBytes = new Uint8Array([9, 9, 9])
+    const mockOverlayPage = {
+      getMediaBox: () => ({ x: 0, y: 0, width: 595, height: 842 }),
+      drawPage: mocks.mockDrawPage,
+    }
+
+    mocks.mockPdf
+      .mockResolvedValueOnce(FAKE_PDF) // content group 1
+      .mockResolvedValueOnce(FAKE_PDF) // content group 2
+      .mockResolvedValueOnce(overlayBytes) // overlay render
+
+    mocks.mockPDFDocumentLoad.mockResolvedValue({
+      getPageIndices: () => [0],
+      getPageCount: () => 2,
+      getPages: () => [mockOverlayPage, mockOverlayPage],
+      embedPage: mocks.mockEmbedPage,
+      save: mocks.mockSave,
+    })
+    mocks.mockSave.mockResolvedValue(finalBytes)
+
+    const pdfOptions = {
+      margin: { top: '20mm' },
+      footerTemplate: '<span class="pageNumber"></span>/<span class="totalPages"></span>',
+    }
+    const result = await generatePDF(['<p>1</p>' as never, '<p>2</p>' as never], pdfOptions)
+
+    expect(result).toBe(finalBytes)
+    expect(mocks.mockPdf).toHaveBeenCalledTimes(3)
+
+    // content pages: margin reserved, but no header/footer painted
+    expect(mocks.mockPdf).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      margin: expect.objectContaining({ top: '20mm' }),
+    }))
+    expect(mocks.mockPdf.mock.calls[0][0]).not.toHaveProperty('displayHeaderFooter')
+    expect(mocks.mockPdf.mock.calls[1][0]).not.toHaveProperty('displayHeaderFooter')
+
+    // overlay render: header/footer painted with the same margin, transparent
+    // (no forced white background) so the content page shows through it
+    expect(mocks.mockPdf).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      displayHeaderFooter: true,
+      footerTemplate: pdfOptions.footerTemplate,
+      margin: expect.objectContaining({ top: '20mm' }),
+      printBackground: false,
+    }))
+    expect(mocks.mockAddStyleTag).toHaveBeenCalledTimes(2) // content pages only, not the overlay
+
+    // 2 merge-level loads (one per content group) + 1 pageCount load + 2 overlayPages loads (content + overlay)
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalledTimes(5)
+    expect(mocks.mockEmbedPage).toHaveBeenCalledTimes(2)
+    expect(mocks.mockDrawPage).toHaveBeenCalledTimes(2)
+  })
+
+  it('multi-groups + pageNumber/totalPages + Uint8Array passthrough group → passthrough page is padded before merge (padPassthroughMargins only true in this path)', async () => {
+    const passthroughPdf = new Uint8Array([0x25, 0x50, 0x44, 0x46])
+    const pdfOptions = {
+      margin: { top: '20mm' },
+      footerTemplate: '<span class="pageNumber"></span>/<span class="totalPages"></span>',
+    }
+
+    await generatePDF(['<p>1</p>' as never, passthroughPdf], pdfOptions)
+
+    // padPdfPageMargins mutates the passthrough page's MediaBox/CropBox
+    // before the merge — only reachable when useGlobalPageNumbering is true.
+    expect(mocks.mockSetMediaBox).toHaveBeenCalled()
+    expect(mocks.mockSetCropBox).toHaveBeenCalled()
+  })
+})
+
+describe('needsGlobalPageNumbering', () => {
+  it('false when no template provided', () => {
+    expect(needsGlobalPageNumbering(undefined, undefined)).toBe(false)
+  })
+
+  it('false for static templates', () => {
+    expect(needsGlobalPageNumbering('<div>Header</div>', '<div>Footer</div>')).toBe(false)
+  })
+
+  it('true when headerTemplate references pageNumber', () => {
+    expect(needsGlobalPageNumbering('<span class="pageNumber"></span>', undefined)).toBe(true)
+  })
+
+  it('true when footerTemplate references totalPages', () => {
+    expect(needsGlobalPageNumbering(undefined, '<span class="totalPages"></span>')).toBe(true)
   })
 })

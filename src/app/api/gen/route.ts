@@ -14,14 +14,14 @@ const pdfResponse = (pdf: Uint8Array<ArrayBuffer>, filename?: string) =>
   })
 
 export const GET = async (request: NextRequest) => {
-  const { filename, items } = parseGetParams(request)
+  const { filename, items, pdfOptions } = parseGetParams(request)
 
   if (!items.length) {
     return Response.json({ error: '\'urls\' must be provided' }, { status: 400 })
   }
 
   try {
-    const pdf = await generatePDF(items)
+    const pdf = await generatePDF(items, pdfOptions)
     return pdfResponse(pdf, filename)
   } catch (error) {
     if (error instanceof HttpError) {
@@ -34,7 +34,7 @@ export const GET = async (request: NextRequest) => {
 
 export const POST = async (request: NextRequest) => {
   try {
-    const { filename, items } = await (
+    const { filename, items, pdfOptions } = await (
       request.headers.get('content-type')?.includes('application/json')
         ? parseJsonBody(request)
         : parseFormBody(request)
@@ -44,7 +44,7 @@ export const POST = async (request: NextRequest) => {
       return Response.json({ error: 'Either \'html\', \'urls\', or \'files\' must be provided' }, { status: 400 })
     }
 
-    const pdf = await generatePDF(items)
+    const pdf = await generatePDF(items, pdfOptions)
     return pdfResponse(pdf, filename ?? 'output.pdf')
   } catch (error) {
     if (error instanceof HttpError) {
