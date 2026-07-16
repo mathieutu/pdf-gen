@@ -1,5 +1,24 @@
 # Changelog
 
+<a name="1.3.0"></a>
+## 1.3.0 (2026-07-16)
+
+### Added
+
+- ✨ Add pdfOptions.pageSize customization to /api/gen [[90dfdf0](https://github.com/mathieutu/pdf-gen/commit/90dfdf046b2aa13d9f9b7341dff1284d7a567bf0)]
+- ✨ Add sync-api-docs skill [[6bd027c](https://github.com/mathieutu/pdf-gen/commit/6bd027c878f1cf9f24b53c5c50db1136ef8394ab)]
+- ✨ Add pdfOptions (header/footer/margin/page numbering) to /api/gen [[83d10c4](https://github.com/mathieutu/pdf-gen/commit/83d10c4d15a46541ee90d4f4a01bbedfdca952bf)]
+
+### Fixed
+
+- 🐛 Normalize passthrough PDF pages to A4 instead of growing them [[96fc9c8](https://github.com/mathieutu/pdf-gen/commit/96fc9c882a2ccb506dd0093216cecbe9f055304b)]
+
+### Miscellaneous
+
+- 📝 Sync docs with pageSize across all doc surfaces [[3331d12](https://github.com/mathieutu/pdf-gen/commit/3331d1254e1a436f12bd1b10347adb90b009ab91)]
+- 📝 Sync docs with pdfOptions across all doc surfaces [[b0a970c](https://github.com/mathieutu/pdf-gen/commit/b0a970c6bdefb7dff05c4bba83222e780170c18d)]
+
+
 <a name="1.2.0"></a>
 ## 1.2.0 (2026-07-15)
 
