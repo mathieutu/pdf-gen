@@ -28,8 +28,8 @@ export const CopyableCode = ({ html, code }: { html: string, code: string }) => 
       </button>
       <div
         className="
-          overflow-x-auto text-sm
-          [&_pre]:p-6
+          text-sm
+          [&_pre]:overflow-x-auto [&_pre]:p-6
           sm:[&_pre]:px-8
         "
         // eslint-disable-next-line react/dom-no-dangerously-set-innerhtml -- server-rendered syntax highlighting output, not user input
