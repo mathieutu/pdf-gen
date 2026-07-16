@@ -1,7 +1,7 @@
 import type { ImageUrl, PdfUrl } from './types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createPDFs, cssLengthToPoints, fetchPdfBytes, generatePDF, getBrowserLaunchOptions, groupConsecutiveImages, mergePdfs, needsGlobalPageNumbering, padPdfPageMargins } from './generate'
+import { A4_SIZE, createPDFs, cssLengthToPoints, fetchPdfBytes, fitPassthroughPageToA4, generatePDF, getBrowserLaunchOptions, groupConsecutiveImages, mergePdfs, needsGlobalPageNumbering, padPdfPageMargins } from './generate'
 import { HttpError } from './types'
 
 const mocks = vi.hoisted(() => {
@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
   const mockPDFDocumentCreate = vi.fn()
   const mockSetMediaBox = vi.fn()
   const mockSetCropBox = vi.fn()
+  const mockScale = vi.fn()
 
   return {
     PDF_BYTES,
@@ -62,6 +63,7 @@ const mocks = vi.hoisted(() => {
     mockPDFDocumentCreate,
     mockSetMediaBox,
     mockSetCropBox,
+    mockScale,
     getChromiumGraphicsMode: () => chromiumGraphicsMode,
     resetChromiumGraphicsMode: () => {
       chromiumGraphicsMode = true
@@ -77,6 +79,7 @@ const makeFakePage = (width = 595, height = 842) => ({
   getMediaBox: () => ({ x: 0, y: 0, width, height }),
   setMediaBox: mocks.mockSetMediaBox,
   setCropBox: mocks.mockSetCropBox,
+  scale: mocks.mockScale,
 })
 
 const makeFakeDoc = (pageCount = 1) => ({
@@ -224,7 +227,6 @@ describe('createPDFs', () => {
     mocks.mockPDFDocumentLoad.mockReset().mockResolvedValue(fakeDoc)
 
     const existingPdfBytes = new Uint8Array([9, 9])
-    // margin is non-zero so padPdfPageMargins actually takes the PDFDocument.load branch
     const result = await createPDFs([existingPdfBytes], { margin: { top: '10px' } }, vi.fn(), true)
 
     expect(mockFetch).not.toHaveBeenCalled()
@@ -324,44 +326,103 @@ describe('cssLengthToPoints', () => {
   })
 })
 
+describe('fitPassthroughPageToA4', () => {
+  it('no margin, page exactly 2x A4 size → scaled by a clean 0.5 factor, centered offset is zero', () => {
+    const mockSetMediaBox = vi.fn()
+    const mockSetCropBox = vi.fn()
+    const mockScale = vi.fn()
+    const page = {
+      getMediaBox: () => ({ x: 0, y: 0, width: A4_SIZE.width * 2, height: A4_SIZE.height * 2 }),
+      setMediaBox: mockSetMediaBox,
+      setCropBox: mockSetCropBox,
+      scale: mockScale,
+    }
+
+    fitPassthroughPageToA4(page as never, undefined)
+
+    expect(mockScale).toHaveBeenCalledWith(0.5, 0.5)
+    // Scaled page (0.5x) exactly fills the full A4 canvas (no margin reserved),
+    // so it's already sitting flush at (0, 0) — no centering offset needed.
+    expect(mockSetMediaBox).toHaveBeenCalledWith(0, 0, A4_SIZE.width, A4_SIZE.height)
+    expect(mockSetCropBox).toHaveBeenCalledWith(0, 0, A4_SIZE.width, A4_SIZE.height)
+  })
+
+  it('non-zero uniform margin → page scaled to fit the content area and offset by margin + centering', () => {
+    const mockSetMediaBox = vi.fn()
+    const mockSetCropBox = vi.fn()
+    const mockScale = vi.fn()
+    const width = 595
+    const height = 842
+    const page = {
+      getMediaBox: () => ({ x: 0, y: 0, width, height }),
+      setMediaBox: mockSetMediaBox,
+      setCropBox: mockSetCropBox,
+      scale: mockScale,
+    }
+    const margin = { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
+
+    fitPassthroughPageToA4(page as never, margin)
+
+    const marginPt = cssLengthToPoints('10mm')
+    const contentWidth = A4_SIZE.width - 2 * marginPt
+    const contentHeight = A4_SIZE.height - 2 * marginPt
+    const factor = Math.min(contentWidth / width, contentHeight / height)
+    const offsetX = marginPt + (contentWidth - width * factor) / 2
+    const offsetY = marginPt + (contentHeight - height * factor) / 2
+
+    expect(mockScale).toHaveBeenCalledWith(factor, factor)
+    expect(mockSetMediaBox).toHaveBeenCalledWith(-offsetX, -offsetY, A4_SIZE.width, A4_SIZE.height)
+    expect(mockSetCropBox).toHaveBeenCalledWith(-offsetX, -offsetY, A4_SIZE.width, A4_SIZE.height)
+  })
+
+  it('landscape page far from the A4 aspect ratio → uniform factor still produces an exact A4-sized box', () => {
+    const mockSetMediaBox = vi.fn()
+    const page = {
+      getMediaBox: () => ({ x: 0, y: 0, width: 2000, height: 100 }),
+      setMediaBox: mockSetMediaBox,
+      setCropBox: vi.fn(),
+      scale: vi.fn(),
+    }
+
+    fitPassthroughPageToA4(page as never, undefined)
+
+    const [, , boxWidth, boxHeight] = mockSetMediaBox.mock.calls[0]
+    expect(boxWidth).toBe(A4_SIZE.width)
+    expect(boxHeight).toBe(A4_SIZE.height)
+  })
+})
+
 describe('padPdfPageMargins', () => {
   beforeEach(() => {
     mocks.mockPDFDocumentLoad.mockReset()
   })
 
-  it('all margins 0/absent → returns the input buffer strictly unchanged, no PDFDocument.load (fast path)', async () => {
-    const pdfBytes = new Uint8Array([1, 2, 3])
-
-    const result = await padPdfPageMargins(pdfBytes, undefined)
-
-    expect(result).toBe(pdfBytes)
-    expect(mocks.mockPDFDocumentLoad).not.toHaveBeenCalled()
-  })
-
-  it('non-zero margin → setMediaBox/setCropBox called with mediaBox ± margin (in points) for each page', async () => {
+  it('all margins 0/absent → still loads and scales pages to A4 (size normalization applies regardless of margin)', async () => {
     const mockSetMediaBox = vi.fn()
-    const mockSetCropBox = vi.fn()
+    const mockScale = vi.fn()
     const page = {
-      getMediaBox: () => ({ x: 0, y: 0, width: 595, height: 842 }),
+      getMediaBox: () => ({ x: 0, y: 0, width: A4_SIZE.width * 2, height: A4_SIZE.height * 2 }),
       setMediaBox: mockSetMediaBox,
-      setCropBox: mockSetCropBox,
+      setCropBox: vi.fn(),
+      scale: mockScale,
     }
     const savedBytes = new Uint8Array([9])
     mocks.mockPDFDocumentLoad.mockResolvedValue({ getPages: () => [page], save: vi.fn().mockResolvedValue(savedBytes) })
 
-    const result = await padPdfPageMargins(new Uint8Array([1]), { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' })
+    const result = await padPdfPageMargins(new Uint8Array([1]), undefined)
 
-    const marginPt = cssLengthToPoints('10mm')
-    expect(mockSetMediaBox).toHaveBeenCalledWith(-marginPt, -marginPt, 595 + 2 * marginPt, 842 + 2 * marginPt)
-    expect(mockSetCropBox).toHaveBeenCalledWith(-marginPt, -marginPt, 595 + 2 * marginPt, 842 + 2 * marginPt)
+    expect(mocks.mockPDFDocumentLoad).toHaveBeenCalled()
+    expect(mockScale).toHaveBeenCalledWith(0.5, 0.5)
     expect(result).toBe(savedBytes)
   })
 
-  it('several pages of different sizes in the same document → each page is padded from its own getMediaBox()', async () => {
+  it('several pages of different sizes in the same document → each page is scaled/boxed from its own getMediaBox()', async () => {
+    const mockScaleA = vi.fn()
+    const mockScaleB = vi.fn()
     const mockSetMediaBoxA = vi.fn()
     const mockSetMediaBoxB = vi.fn()
-    const pageA = { getMediaBox: () => ({ x: 0, y: 0, width: 595, height: 842 }), setMediaBox: mockSetMediaBoxA, setCropBox: vi.fn() }
-    const pageB = { getMediaBox: () => ({ x: 0, y: 0, width: 842, height: 595 }), setMediaBox: mockSetMediaBoxB, setCropBox: vi.fn() }
+    const pageA = { getMediaBox: () => ({ x: 0, y: 0, width: 595, height: 842 }), setMediaBox: mockSetMediaBoxA, setCropBox: vi.fn(), scale: mockScaleA }
+    const pageB = { getMediaBox: () => ({ x: 0, y: 0, width: 842, height: 595 }), setMediaBox: mockSetMediaBoxB, setCropBox: vi.fn(), scale: mockScaleB }
     mocks.mockPDFDocumentLoad.mockResolvedValue({
       getPages: () => [pageA, pageB],
       save: vi.fn().mockResolvedValue(new Uint8Array()),
@@ -369,9 +430,13 @@ describe('padPdfPageMargins', () => {
 
     await padPdfPageMargins(new Uint8Array([1]), { top: '10mm' })
 
-    const marginPt = cssLengthToPoints('10mm')
-    expect(mockSetMediaBoxA).toHaveBeenCalledWith(0, 0, 595, 842 + marginPt)
-    expect(mockSetMediaBoxB).toHaveBeenCalledWith(0, 0, 842, 595 + marginPt)
+    // Each page's scale factor is computed from its own (different) width/height,
+    // not a single value shared/reused across the whole document.
+    expect(mockScaleA).toHaveBeenCalled()
+    expect(mockScaleB).toHaveBeenCalled()
+    expect(mockScaleA.mock.calls[0]).not.toEqual(mockScaleB.mock.calls[0])
+    expect(mockSetMediaBoxA).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), A4_SIZE.width, A4_SIZE.height)
+    expect(mockSetMediaBoxB).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), A4_SIZE.width, A4_SIZE.height)
   })
 })
 
@@ -394,6 +459,7 @@ describe('generatePDF', () => {
     mocks.mockDrawPage.mockReset()
     mocks.mockSetMediaBox.mockReset()
     mocks.mockSetCropBox.mockReset()
+    mocks.mockScale.mockReset()
     mocks.mockSave.mockReset().mockResolvedValue(FAKE_PDF)
     mocks.resetChromiumGraphicsMode()
   })
@@ -601,6 +667,7 @@ describe('generatePDF', () => {
 
     await generatePDF(['<p>1</p>' as never, passthroughPdf], pdfOptions)
 
+    expect(mocks.mockScale).not.toHaveBeenCalled()
     expect(mocks.mockSetMediaBox).not.toHaveBeenCalled()
     expect(mocks.mockSetCropBox).not.toHaveBeenCalled()
   })
@@ -668,8 +735,10 @@ describe('generatePDF', () => {
 
     await generatePDF(['<p>1</p>' as never, passthroughPdf], pdfOptions)
 
-    // padPdfPageMargins mutates the passthrough page's MediaBox/CropBox
-    // before the merge — only reachable when useGlobalPageNumbering is true.
+    // padPdfPageMargins scales the passthrough page to fit A4 and repositions
+    // its MediaBox/CropBox before the merge — only reachable when
+    // useGlobalPageNumbering is true.
+    expect(mocks.mockScale).toHaveBeenCalled()
     expect(mocks.mockSetMediaBox).toHaveBeenCalled()
     expect(mocks.mockSetCropBox).toHaveBeenCalled()
   })

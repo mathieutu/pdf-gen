@@ -1,10 +1,17 @@
 import type { ImageUrl } from './types'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { PDFDocument } from 'pdf-lib'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { describe, expect, it } from 'vitest'
 import { EXAMPLE_FOOTER_TEMPLATE, EXAMPLE_HEADER_TEMPLATE, EXAMPLE_HTML, EXAMPLE_HTML_URL, EXAMPLE_IMAGE_URL, EXAMPLE_MARGIN, EXAMPLE_PDF_URL } from '@/lib/examples'
-import { cssLengthToPoints, generatePDF } from './generate'
+import { A4_SIZE, generatePDF } from './generate'
+
+const buildTestPdf = async (width: number, height: number): Promise<Uint8Array> => {
+  const doc = await PDFDocument.create()
+  doc.addPage([width, height])
+  return doc.save()
+}
 
 // PNG 1x1 transparent minimal
 const TINY_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=' as ImageUrl
@@ -128,34 +135,35 @@ describe('generatePDF — pdfOptions header/footer/margin (real Puppeteer + pdfj
     expect(secondPageText).toContain('Page 2 / 2')
   })
 
-  it('multi-item merge with a passthrough PDF + pageNumber/totalPages → the passthrough page\'s MediaBox grows by the margin (two-pass overlay)', async () => {
-    const originalPdf = await generatePDF(['<p>Original document</p>' as never])
-    const originalDoc = await getDocument({ data: new Uint8Array(originalPdf) }).promise
-    const originalPage = await originalDoc.getPage(1)
-    const [ox0, oy0, ox1, oy1] = originalPage.view
-    const originalWidth = ox1 - ox0
-    const originalHeight = oy1 - oy0
+  it('multi-item merge with a passthrough PDF (far from A4 size/aspect) + pageNumber/totalPages → the passthrough page ends up the exact same physical size as its Puppeteer-rendered siblings (two-pass overlay)', async () => {
+    // Deliberately not A4-shaped at all (very wide and short) — the whole point of
+    // this normalization is that it must handle a passthrough page whose native
+    // size/aspect has nothing to do with A4, not just add a margin around an
+    // already-A4-ish page.
+    const landscapeTestPdf = await buildTestPdf(1600, 400)
 
     const footerTemplate = '<div style="font-size:10px; width:100%; text-align:center;">Page <span class="pageNumber"></span> / <span class="totalPages"></span></div>'
     const result = await generatePDF([
       '<p>First document</p>' as never,
-      originalPdf,
+      landscapeTestPdf,
       '<p>Third document</p>' as never,
     ], { margin: EXAMPLE_MARGIN, footerTemplate })
 
     const mergedDoc = await getDocument({ data: new Uint8Array(result) }).promise
+    const puppeteerPage = await mergedDoc.getPage(1)
     const passthroughPage = await mergedDoc.getPage(2)
+
+    const [px0, py0, px1, py1] = puppeteerPage.view
     const [x0, y0, x1, y1] = passthroughPage.view
-    const paddedWidth = x1 - x0
-    const paddedHeight = y1 - y0
 
-    const leftPt = cssLengthToPoints(EXAMPLE_MARGIN.left)
-    const rightPt = cssLengthToPoints(EXAMPLE_MARGIN.right)
-    const topPt = cssLengthToPoints(EXAMPLE_MARGIN.top)
-    const bottomPt = cssLengthToPoints(EXAMPLE_MARGIN.bottom)
-
-    expect(paddedWidth).toBeCloseTo(originalWidth + leftPt + rightPt, 0)
-    expect(paddedHeight).toBeCloseTo(originalHeight + topPt + bottomPt, 0)
+    // This is the bug being fixed: pages coming from passthrough PDFs used to come
+    // out visibly *bigger* than their Puppeteer-rendered siblings (native size +
+    // margin literally added on top of it) instead of sharing the same fixed A4
+    // canvas, with the margin acting as an inset like it does for Puppeteer pages.
+    expect(x1 - x0).toBeCloseTo(px1 - px0, 5)
+    expect(y1 - y0).toBeCloseTo(py1 - py0, 5)
+    expect(x1 - x0).toBeCloseTo(A4_SIZE.width, 5)
+    expect(y1 - y0).toBeCloseTo(A4_SIZE.height, 5)
   })
 })
 

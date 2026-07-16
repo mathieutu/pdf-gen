@@ -1,3 +1,4 @@
+import type { PDFPage } from 'pdf-lib'
 import type { Item, PdfOptions } from './types'
 import chromium from '@sparticuz/chromium'
 import { PDFDocument } from 'pdf-lib'
@@ -124,22 +125,57 @@ export const cssLengthToPoints = (value?: string): number => {
   return Number(amount) * PT_PER_CSS_UNIT[unit.toLowerCase()]
 }
 
-export const padPdfPageMargins = async (pdfBytes: Uint8Array, margin?: PdfOptions['margin']): Promise<Uint8Array> => {
+// Empirically measured MediaBox that this project's pinned Puppeteer/Chromium build
+// actually produces for `page.pdf({ format: 'a4' })` (see convertHTMLWithBrowser) —
+// verified by rendering a page and reading its MediaBox back with pdf-lib, NOT the
+// commonly-quoted ISO 216 approximation (595.28 x 841.89pt), which is off by
+// ~0.64pt/0.03pt from what Chromium's print pipeline really outputs. Passthrough
+// pages are normalized to this exact measured value (rather than a "nicer" derived
+// one) so they end up pixel-consistent with their Puppeteer-rendered siblings in the
+// same merged document — that consistency is the whole point of this normalization.
+export const A4_SIZE = { width: 595.91998, height: 841.91998 }
+
+// Fits a passthrough page's own content (whatever its native size/aspect ratio) into
+// an A4 canvas, with `margin` reserved as a visual inset — the same model Puppeteer
+// uses for the pages it renders (a margin carves out space *within* a fixed-size
+// canvas, it never grows the canvas itself). A single uniform scale factor (the
+// tighter of the two axes) preserves the page's aspect ratio, leaving white bands on
+// the other axis rather than stretching/squashing the content, then the scaled page
+// is centered in the leftover space on that axis. `page.scale()` (pdf-lib) moves
+// content *and* annotations together (verified empirically: a link's /Rect scales
+// consistently with the content it's anchored to), unlike embedPage/drawPage which
+// would flatten the page and drop annotations entirely.
+export const fitPassthroughPageToA4 = (page: PDFPage, margin?: PdfOptions['margin']): void => {
   const top = cssLengthToPoints(margin?.top)
   const bottom = cssLengthToPoints(margin?.bottom)
   const left = cssLengthToPoints(margin?.left)
   const right = cssLengthToPoints(margin?.right)
 
-  if (!top && !bottom && !left && !right) {
-    return pdfBytes
-  }
+  const contentWidth = A4_SIZE.width - left - right
+  const contentHeight = A4_SIZE.height - top - bottom
 
+  const { x, y, width, height } = page.getMediaBox()
+  const factor = Math.min(contentWidth / width, contentHeight / height)
+
+  page.scale(factor, factor)
+
+  const scaledWidth = width * factor
+  const scaledHeight = height * factor
+  const offsetX = left + (contentWidth - scaledWidth) / 2
+  const offsetY = bottom + (contentHeight - scaledHeight) / 2
+
+  // Same MediaBox-origin-shift technique as before: since scale() doesn't move the
+  // page's own (x, y) origin, shifting it by -offset places the (already scaled,
+  // already-positioned) content at the right inset from the new A4 canvas' corner,
+  // without touching a single drawing/annotation coordinate.
+  page.setMediaBox(x - offsetX, y - offsetY, A4_SIZE.width, A4_SIZE.height)
+  page.setCropBox(x - offsetX, y - offsetY, A4_SIZE.width, A4_SIZE.height)
+}
+
+export const padPdfPageMargins = async (pdfBytes: Uint8Array, margin?: PdfOptions['margin']): Promise<Uint8Array> => {
   const doc = await PDFDocument.load(pdfBytes)
   for (const page of doc.getPages()) {
-    const { x, y, width, height } = page.getMediaBox()
-    const box = { x: x - left, y: y - bottom, width: width + left + right, height: height + top + bottom }
-    page.setMediaBox(box.x, box.y, box.width, box.height)
-    page.setCropBox(box.x, box.y, box.width, box.height)
+    fitPassthroughPageToA4(page, margin)
   }
 
   return doc.save({ useObjectStreams: false })
